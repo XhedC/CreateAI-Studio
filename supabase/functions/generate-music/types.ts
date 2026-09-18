@@ -13,6 +13,7 @@ export interface MusicSettings {
 }
 
 export interface GenerateMusicRequestBody {
+  generationId: string;
   prompt: string;
   lyrics?: string | null;
   settings?: Partial<MusicSettings>;

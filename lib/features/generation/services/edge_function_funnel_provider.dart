@@ -73,7 +73,7 @@ class EdgeFunctionFunnelProvider implements FunnelAIProvider {
         },
       );
     } on FunctionException catch (e) {
-      throw GenerationException(message: _messageFrom(e.details));
+      throw GenerationException(message: _messageFrom(e.details), code: _codeFrom(e.details));
     } catch (_) {
       throw const GenerationException(
         message: 'Could not reach the funnel generation service. Please try again.',
@@ -82,7 +82,7 @@ class EdgeFunctionFunnelProvider implements FunnelAIProvider {
 
     final data = response.data;
     if (data is! Map || data['success'] != true) {
-      throw GenerationException(message: _messageFrom(data));
+      throw GenerationException(message: _messageFrom(data), code: _codeFrom(data));
     }
 
     final funnel = (data['funnel'] as Map?)?.cast<String, dynamic>();
@@ -110,5 +110,12 @@ class EdgeFunctionFunnelProvider implements FunnelAIProvider {
       return details['error'] as String;
     }
     return 'Something went wrong while generating your funnel. Please try again.';
+  }
+
+  String? _codeFrom(Object? details) {
+    if (details is Map && details['code'] is String) {
+      return details['code'] as String;
+    }
+    return null;
   }
 }

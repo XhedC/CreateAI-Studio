@@ -8,19 +8,23 @@ database, dashboard, projects/history, settings, and the reusable
 AI-generation architecture, with every generation type mocked. **Phase 2**
 connected **AI Image Generation** to a real backend, **Phase 3** connected
 **AI Music Generation** the same way, **Phase 4** connected **AI Video
-Generation**, and **Phase 5** connected an **AI Funnel/Landing Page
-Generator** - each a Supabase Edge Function with a provider-agnostic
+Generation**, **Phase 5** connected an **AI Funnel/Landing Page
+Generator**, and **Phase 6** built the **Credits, Usage & Subscription
+foundation** - each generation type's Edge Function is a provider-agnostic
 vendor abstraction, all currently running in safe development (mock) mode
 until a real AI provider key is configured - see
 [docs/image-generation.md](docs/image-generation.md),
 [docs/music-generation.md](docs/music-generation.md),
-[docs/video-generation.md](docs/video-generation.md), and
-[docs/funnel-generation.md](docs/funnel-generation.md). Video is the first
-type that's genuinely asynchronous (job created → polled → completed)
-rather than one synchronous request/response; a funnel's result is a
-structured, versioned JSON document (rendered as real Flutter widgets,
-never raw HTML) rather than a single media file. Text remains mocked
-pending a later phase.
+[docs/video-generation.md](docs/video-generation.md),
+[docs/funnel-generation.md](docs/funnel-generation.md), and
+[docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md](docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md).
+Video is the first type that's genuinely asynchronous (job created →
+polled → completed) rather than one synchronous request/response; a
+funnel's result is a structured, versioned JSON document (rendered as real
+Flutter widgets, never raw HTML) rather than a single media file. Every
+generation now reserves credits atomically before calling its AI provider
+and refunds them on definitive failure - see Phase 6 below. Text remains
+mocked pending a later phase.
 
 > "CreateAI Studio" is a working name. Rename it in one place:
 > [`lib/core/config/app_constants.dart`](lib/core/config/app_constants.dart)
@@ -55,7 +59,7 @@ lib/
     projects/      # project CRUD
     profile/       # profile screen
     settings/      # theme, notifications, language
-    credits/       # credits/subscription read-only summary
+    credits/       # credits/subscription: balance, plans, costs, ledger, usage dashboard (Phase 6)
     notifications/ # in-app notifications list (placeholder)
   core/audio/      # AudioPlayerController - single app-wide just_audio player (Phase 3)
   core/widgets/video_player_widget.dart # reusable video_player + chewie player (Phase 4)
@@ -237,10 +241,18 @@ flutter test
 - History → filter: Funnel shows generated funnels; View/Edit/Duplicate/Delete all work (Duplicate creates a new funnel+generation without touching the original; Delete reuses the existing generation-delete path via a cascading foreign key).
 - Funnels cost 4 credits per generation, and reuse the existing Project system (a funnel's `project_id` is copied from its generation, same as every other type).
 
+**Phase 6 (Credits, Usage & Subscription Foundation):**
+- DB-driven `plans` (Free/Pro/Business) and `credit_costs` tables - no plan limit or generation cost is hardcoded in Flutter or in an Edge Function; every generator screen shows the live cost next to its Generate button.
+- Credit charging moved to an atomic, race-safe `reserve_credits` RPC called *before* the AI provider, replacing each Edge Function's old post-hoc "deduct credits" check; refunded via `refund_generation_credits` on any definitive failure (provider error, invalid response, storage/DB failure). Video's async job now gets refunded on a provider-reported failure too - a real pre-existing gap this phase closed.
+- Every credit-moving operation (charge, refund, monthly grant) is idempotent via a dedicated `idempotency_keys` table - retries and concurrent duplicate requests can never double-charge or double-refund.
+- New Plan/Subscription, Usage Dashboard, and paginated Credit History screens. Selecting a paid plan shows "payment integration coming soon" - **no real payment processing exists yet**, by design.
+- A `SubscriptionProvider` abstract interface for a future payment integration (Stripe, Play Billing, ...) - unimplemented, no credentials, mirrors the existing `AIProvider` pattern.
+- See [docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md](docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md) for the full design, race-safety, and idempotency writeup.
+
 ## What's not yet implemented
 
 - Verified, production-ready AI vendor integrations - the OpenAI (images/funnels) and Stability AI (music/video) implementations are all written against publicly documented endpoints but have not been exercised against a real key; see "known gaps" in [docs/image-generation.md](docs/image-generation.md) / [docs/music-generation.md](docs/music-generation.md) / [docs/video-generation.md](docs/video-generation.md) / [docs/funnel-generation.md](docs/funnel-generation.md) before enabling any of them in production.
-- Credit *purchases* or subscription upgrades (checking/deducting existing credits is implemented; no payment flow).
+- Real credit *purchases* or subscription upgrades - the billing foundation (balances, ledger, atomic/idempotent charge-and-refund, DB-driven plans/costs) is implemented and enforced server-side; no payment provider is integrated, so a plan can be viewed but not actually purchased yet.
 - Push notifications (in-app notifications list exists; nothing populates it yet).
 - Avatar upload flow in Profile (storage path/bucket support this; the screen only shows a placeholder today).
 - A provider webhook for video completion - not needed today since the connected provider (Stability's Stable Video Diffusion) has no documented webhook to register against; client-side polling is what's real and tested. See "Async generation architecture" in [docs/video-generation.md](docs/video-generation.md).
@@ -253,10 +265,11 @@ flutter test
 
 ## Recommended next phase
 
-Credits/Subscription payments and monetization, then Play Store packaging
-(real signing config, app icon, privacy policy, permissions review). Public
-funnel publishing (with custom domains/hosting) is a natural follow-on once
-payments exist to gate it.
+Real payment-provider integration (Stripe, Google Play Billing, ...) against
+the `SubscriptionProvider` interface Phase 6 already defined, then Play
+Store packaging (real signing config, app icon, privacy policy, permissions
+review). Public funnel publishing (with custom domains/hosting) is a
+natural follow-on once payments exist to gate it.
 
 ## Documentation
 
@@ -267,3 +280,4 @@ payments exist to gate it.
 - [docs/music-generation.md](docs/music-generation.md) - the Phase 3 Edge Function, audio player architecture, async-generation design, and how to switch providers.
 - [docs/video-generation.md](docs/video-generation.md) - the Phase 4 Edge Functions, the genuinely-async job/poll architecture, provider job security, cancellation, and how to switch providers.
 - [docs/funnel-generation.md](docs/funnel-generation.md) - the Phase 5 funnel schema, JSON validation/safe-correction, the Edge Function, the structured renderer, the editor/preview, leads, and future publishing architecture.
+- [docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md](docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md) - the Phase 6 credit/subscription schema, atomic race-safe charging, idempotency, Edge Function billing integration, and the future payment-provider architecture.

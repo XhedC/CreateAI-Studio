@@ -51,6 +51,7 @@ class EdgeFunctionImageProvider implements ImageAIProvider {
       response = await _invoke(
         functionName,
         body: {
+          'generationId': request.generationId,
           'prompt': request.prompt,
           'referenceImagePath':
               request.attachmentUrls.isNotEmpty ? request.attachmentUrls.first : null,
@@ -58,7 +59,7 @@ class EdgeFunctionImageProvider implements ImageAIProvider {
         },
       );
     } on FunctionException catch (e) {
-      throw GenerationException(message: _messageFrom(e.details));
+      throw GenerationException(message: _messageFrom(e.details), code: _codeFrom(e.details));
     } catch (_) {
       throw const GenerationException(
         message: 'Could not reach the image generation service. Please try again.',
@@ -67,7 +68,7 @@ class EdgeFunctionImageProvider implements ImageAIProvider {
 
     final data = response.data;
     if (data is! Map || data['success'] != true) {
-      throw GenerationException(message: _messageFrom(data));
+      throw GenerationException(message: _messageFrom(data), code: _codeFrom(data));
     }
 
     final images = (data['images'] as List? ?? const [])
@@ -107,6 +108,13 @@ class EdgeFunctionImageProvider implements ImageAIProvider {
       return details['error'] as String;
     }
     return 'Something went wrong while generating your image. Please try again.';
+  }
+
+  String? _codeFrom(Object? details) {
+    if (details is Map && details['code'] is String) {
+      return details['code'] as String;
+    }
+    return null;
   }
 
   String _extensionFor(String? mimeType) {

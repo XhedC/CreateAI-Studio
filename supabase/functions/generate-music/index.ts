@@ -60,8 +60,12 @@ function errorStatusFor(code: string): number {
     case 'INVALID_LYRICS':
     case 'INVALID_REQUEST':
     case 'UNSUPPORTED_FORMAT':
+    case 'INVALID_AMOUNT':
       return 400;
+    case 'FORBIDDEN':
+      return 403;
     case 'RATE_LIMITED':
+    case 'DUPLICATE_REQUEST':
       return 429;
     case 'CONFIGURATION_ERROR':
       return 500;
@@ -162,6 +166,14 @@ Deno.serve(async (req) => {
     );
   }
 
+  const generationId = (body.generationId ?? '').toString().trim();
+  if (!generationId) {
+    return jsonResponse(
+      { success: false, error: 'Missing generationId.', code: 'INVALID_REQUEST' },
+      400,
+    );
+  }
+
   const rawSettings = body.settings ?? {};
   const settings: MusicSettings = {
     genre: typeof rawSettings.genre === 'string' ? rawSettings.genre : DEFAULT_SETTINGS.genre,
@@ -180,6 +192,20 @@ Deno.serve(async (req) => {
   };
 
   const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+
+  // --- Verify the generation row: exists, belongs to this caller, and is
+  // actually a music-type generation - see docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md.
+  const { data: generation, error: genFetchError } = await userClient
+    .from('generations')
+    .select('id, user_id, project_id, generation_type')
+    .eq('id', generationId)
+    .maybeSingle();
+  if (genFetchError || !generation || generation.generation_type !== 'music') {
+    return jsonResponse(
+      { success: false, error: 'This generation could not be found.', code: 'FORBIDDEN' },
+      403,
+    );
+  }
 
   // --- Duplicate-request protection --------------------------------------
   const { data: recentGenerations } = await userClient
@@ -203,26 +229,45 @@ Deno.serve(async (req) => {
     );
   }
 
-  // --- Credits check (service role - subscriptions is not client-writable) ---
-  const { data: subscription } = await serviceClient
-    .from('subscriptions')
-    .select('credits_limit, credits_used')
-    .eq('user_id', userId)
-    .eq('status', 'active')
+  // --- Determine the server-trusted cost and reserve credits BEFORE
+  // calling the provider - see docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md. -----
+  const { data: costRow } = await serviceClient
+    .from('credit_costs')
+    .select('cost')
+    .eq('generation_type', 'music')
+    .is('variant', null)
+    .eq('active', true)
     .maybeSingle();
+  const cost = costRow?.cost ?? MUSIC_CREDIT_COST;
 
-  if (subscription) {
-    const remaining = subscription.credits_limit - subscription.credits_used;
-    if (remaining < MUSIC_CREDIT_COST) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "You don't have enough credits for this generation.",
-          code: 'INSUFFICIENT_CREDITS',
-        },
-        402,
-      );
-    }
+  const { data: reservation, error: reserveError } = await serviceClient.rpc('reserve_credits', {
+    p_user_id: userId,
+    p_amount: cost,
+    p_idempotency_key: generationId,
+    p_generation_id: generationId,
+    p_generation_type: 'music',
+    p_project_id: generation.project_id,
+    p_provider: null,
+    p_description: 'Music generation',
+    p_metadata: { genre: settings.genre, mood: settings.mood, duration: settings.duration },
+  });
+  if (reserveError || !reservation?.success) {
+    const code = reservation?.code ?? 'UNKNOWN';
+    return jsonResponse(
+      { success: false, error: reservation?.error ?? 'Something went wrong while checking your credits.', code },
+      errorStatusFor(code),
+    );
+  }
+
+  async function refundReservation(reason: string) {
+    await serviceClient.rpc('refund_generation_credits', {
+      p_user_id: userId,
+      p_amount: cost,
+      p_idempotency_key: `refund:${generationId}`,
+      p_generation_id: generationId,
+      p_description: `Refund: ${reason}`,
+      p_metadata: {},
+    });
   }
 
   // --- Call the provider ---------------------------------------------------
@@ -231,6 +276,7 @@ Deno.serve(async (req) => {
     const provider = resolveProvider();
     result = await provider.generate({ prompt, lyrics, settings });
   } catch (error) {
+    await refundReservation('provider error');
     if (error instanceof ProviderError) {
       return jsonResponse(
         { success: false, error: error.message, code: error.code },
@@ -261,6 +307,7 @@ Deno.serve(async (req) => {
     });
   if (uploadError) {
     console.error('Storage upload failed', uploadError);
+    await refundReservation('storage upload failed');
     return jsonResponse(
       {
         success: false,
@@ -275,6 +322,7 @@ Deno.serve(async (req) => {
     .from(STORAGE_BUCKET)
     .createSignedUrl(path, 60 * 60);
   if (signError || !signed) {
+    await refundReservation('could not create playback link');
     return jsonResponse(
       {
         success: false,
@@ -285,21 +333,10 @@ Deno.serve(async (req) => {
     );
   }
 
-  // --- Deduct credits (service role) --------------------------------------
-  if (subscription) {
-    await serviceClient
-      .from('subscriptions')
-      .update({ credits_used: subscription.credits_used + MUSIC_CREDIT_COST })
-      .eq('user_id', userId);
-
-    await serviceClient.from('credit_transactions').insert({
-      user_id: userId,
-      amount: -MUSIC_CREDIT_COST,
-      transaction_type: 'generation',
-      description: `Music generation (${result.providerName})`,
-      reference_id: null,
-    });
-  }
+  await serviceClient.rpc('finalize_generation_charge', {
+    p_generation_id: generationId,
+    p_metadata: { provider: result.providerName, model: result.modelName },
+  });
 
   return jsonResponse({
     success: true,
@@ -321,6 +358,7 @@ Deno.serve(async (req) => {
       tempo: settings.tempo,
       instrumental: settings.instrumental,
       lyrics,
+      creditsCharged: cost,
       ...result.metadata,
     },
   });

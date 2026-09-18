@@ -20,6 +20,9 @@ class RoutePaths {
 
   static const String settings = '/settings';
   static const String notifications = '/notifications';
+  static const String plans = '/plans';
+  static const String usageDashboard = '/usage';
+  static const String creditHistory = '/credits/history';
 
   static String generationDetail(String id) => '/history/$id';
   static String projectDetail(String id) => '/projects/$id';

@@ -9,6 +9,8 @@ import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../credits/presentation/providers/credits_providers.dart';
+import '../../../credits/presentation/widgets/generation_cost_label.dart';
+import '../../../credits/presentation/widgets/insufficient_credits_dialog.dart';
 import '../../../generation/presentation/providers/generation_providers.dart';
 // Reused as-is from image_generation - the reference-image concept (model,
 // validator, and picker widget) isn't image-specific, so Video reuses it
@@ -107,9 +109,14 @@ class _VideoGeneratorScreenState extends ConsumerState<VideoGeneratorScreen> {
 
     ref.listen(createGenerationControllerProvider, (previous, next) {
       if (next is AsyncError && next.error is AppException) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text((next.error as AppException).message)),
-        );
+        final error = next.error as AppException;
+        if (error.code == 'INSUFFICIENT_CREDITS') {
+          showInsufficientCreditsDialog(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error.message)),
+          );
+        }
       }
     });
 
@@ -179,7 +186,9 @@ class _VideoGeneratorScreenState extends ConsumerState<VideoGeneratorScreen> {
               const ReferenceImagePickerField(),
               const SizedBox(height: 8),
               const VideoSettingsPanel(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              const GenerationCostLabel(generationType: 'video'),
+              const SizedBox(height: 4),
               AppButton(
                 label: 'Generate Video',
                 icon: Icons.movie_creation_outlined,

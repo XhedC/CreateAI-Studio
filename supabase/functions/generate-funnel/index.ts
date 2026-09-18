@@ -62,10 +62,12 @@ function errorStatusFor(code: string): number {
     case "INVALID_PROMPT":
     case "INVALID_REQUEST":
     case "INVALID_AI_RESPONSE":
+    case "INVALID_AMOUNT":
       return 400;
     case "FORBIDDEN":
       return 403;
     case "RATE_LIMITED":
+    case "DUPLICATE_REQUEST":
       return 429;
     case "CONFIGURATION_ERROR":
       return 500;
@@ -226,26 +228,45 @@ Deno.serve(async (req) => {
     );
   }
 
-  // --- Credits check -------------------------------------------------------
-  const { data: subscription } = await serviceClient
-    .from("subscriptions")
-    .select("credits_limit, credits_used")
-    .eq("user_id", userId)
-    .eq("status", "active")
+  // --- Determine the server-trusted cost and reserve credits BEFORE
+  // calling the provider - see docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md. -----
+  const { data: costRow } = await serviceClient
+    .from("credit_costs")
+    .select("cost")
+    .eq("generation_type", "funnel")
+    .is("variant", null)
+    .eq("active", true)
     .maybeSingle();
+  const cost = costRow?.cost ?? FUNNEL_CREDIT_COST;
 
-  if (subscription) {
-    const remaining = subscription.credits_limit - subscription.credits_used;
-    if (remaining < FUNNEL_CREDIT_COST) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "You don't have enough credits for this generation.",
-          code: "INSUFFICIENT_CREDITS",
-        },
-        402,
-      );
-    }
+  const { data: reservation, error: reserveError } = await serviceClient.rpc("reserve_credits", {
+    p_user_id: userId,
+    p_amount: cost,
+    p_idempotency_key: generationId,
+    p_generation_id: generationId,
+    p_generation_type: "funnel",
+    p_project_id: generation.project_id,
+    p_provider: null,
+    p_description: "Funnel generation",
+    p_metadata: { funnelType },
+  });
+  if (reserveError || !reservation?.success) {
+    const code = reservation?.code ?? "UNKNOWN";
+    return jsonResponse(
+      { success: false, error: reservation?.error ?? "Something went wrong while checking your credits.", code },
+      errorStatusFor(code),
+    );
+  }
+
+  async function refundReservation(reason: string) {
+    await serviceClient.rpc("refund_generation_credits", {
+      p_user_id: userId,
+      p_amount: cost,
+      p_idempotency_key: `refund:${generationId}`,
+      p_generation_id: generationId,
+      p_description: `Refund: ${reason}`,
+      p_metadata: {},
+    });
   }
 
   // --- Call the provider -----------------------------------------------
@@ -260,6 +281,7 @@ Deno.serve(async (req) => {
       hasProductImage: !!(body.productImagePath || body.referenceImagePath),
     });
   } catch (error) {
+    await refundReservation("provider error");
     if (error instanceof ProviderError) {
       return jsonResponse(
         { success: false, error: error.message, code: error.code },
@@ -289,6 +311,7 @@ Deno.serve(async (req) => {
       prompt,
     });
   } catch (error) {
+    await refundReservation("invalid AI response");
     if (error instanceof ProviderError) {
       return jsonResponse(
         { success: false, error: error.message, code: error.code },
@@ -334,6 +357,7 @@ Deno.serve(async (req) => {
     .single();
   if (insertError || !funnelRow) {
     console.error("Funnel insert failed", insertError);
+    await refundReservation("could not save funnel");
     return jsonResponse(
       {
         success: false,
@@ -344,21 +368,10 @@ Deno.serve(async (req) => {
     );
   }
 
-  // --- Deduct credits (service role) --------------------------------------
-  if (subscription) {
-    await serviceClient
-      .from("subscriptions")
-      .update({ credits_used: subscription.credits_used + FUNNEL_CREDIT_COST })
-      .eq("user_id", userId);
-
-    await serviceClient.from("credit_transactions").insert({
-      user_id: userId,
-      amount: -FUNNEL_CREDIT_COST,
-      transaction_type: "generation",
-      description: `Funnel generation (${providerResult.providerName})`,
-      reference_id: funnelRow.id,
-    });
-  }
+  await serviceClient.rpc("finalize_generation_charge", {
+    p_generation_id: generationId,
+    p_metadata: { provider: providerResult.providerName, model: providerResult.modelName, funnelId: funnelRow.id },
+  });
 
   return jsonResponse({
     success: true,
@@ -370,6 +383,7 @@ Deno.serve(async (req) => {
       funnelId: funnelRow.id,
       funnelType: schema.type,
       sectionsCount: schema.sections.length,
+      creditsCharged: cost,
       ...providerResult.metadata,
     },
   });

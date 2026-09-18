@@ -4,11 +4,17 @@
 /// error is preserved in [cause]/[stackTrace] for logging only - it must
 /// never be shown in the UI.
 sealed class AppException implements Exception {
-  const AppException(this.message, {this.cause, this.stackTrace});
+  const AppException(this.message, {this.cause, this.stackTrace, this.code});
 
   final String message;
   final Object? cause;
   final StackTrace? stackTrace;
+
+  /// The backend's machine-readable error code (e.g. `INSUFFICIENT_CREDITS`,
+  /// `DUPLICATE_REQUEST`), when the failure came from an Edge Function -
+  /// null for purely client-side failures. Lets the UI branch on specific,
+  /// known failure reasons without parsing [message].
+  final String? code;
 
   @override
   String toString() => message;
@@ -51,6 +57,7 @@ class GenerationException extends AppException {
     String message = 'Generation failed. Please try again.',
     super.cause,
     super.stackTrace,
+    super.code,
   }) : super(message);
 }
 

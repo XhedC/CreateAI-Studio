@@ -15,6 +15,7 @@ export interface VideoSettings {
 }
 
 export interface GenerateVideoRequestBody {
+  generationId: string;
   prompt: string;
   referenceImagePath?: string | null;
   settings?: Partial<VideoSettings>;

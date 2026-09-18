@@ -91,6 +91,7 @@ class ProfileScreen extends ConsumerWidget {
             data: (summary) => CreditCard(
               creditsRemaining: summary.creditsRemaining,
               planName: summary.planName,
+              onTap: () => context.push(RoutePaths.usageDashboard),
             ),
             loading: () => const SizedBox.shrink(),
             error: (_, __) => const SizedBox.shrink(),
@@ -104,11 +105,14 @@ class ProfileScreen extends ConsumerWidget {
                   title: const Text('Subscription'),
                   subtitle: Text(creditsAsync.value?.planName ?? 'Free'),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Subscription plans are coming in a future phase.'),
-                    ),
-                  ),
+                  onTap: () => context.push(RoutePaths.plans),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.receipt_long_outlined),
+                  title: const Text('Credit History'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push(RoutePaths.creditHistory),
                 ),
                 const Divider(height: 1),
                 ListTile(

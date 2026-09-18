@@ -52,7 +52,7 @@ class HomeScreen extends ConsumerWidget {
               data: (summary) => CreditCard(
                 creditsRemaining: summary.creditsRemaining,
                 planName: summary.planName,
-                onTap: () => context.push(RoutePaths.settings),
+                onTap: () => context.push(RoutePaths.usageDashboard),
               ),
               loading: () => const LoadingWidget(),
               error: (_, __) => const SizedBox.shrink(),

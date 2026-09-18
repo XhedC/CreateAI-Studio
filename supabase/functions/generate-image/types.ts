@@ -17,6 +17,7 @@ export interface ImageSettings {
 }
 
 export interface GenerateImageRequestBody {
+  generationId: string;
   prompt: string;
   referenceImagePath?: string | null;
   settings?: Partial<ImageSettings>;

@@ -9,6 +9,8 @@ import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../credits/presentation/providers/credits_providers.dart';
+import '../../../credits/presentation/widgets/generation_cost_label.dart';
+import '../../../credits/presentation/widgets/insufficient_credits_dialog.dart';
 import '../../../generation/presentation/providers/generation_providers.dart';
 import '../providers/image_generation_providers.dart';
 import '../widgets/image_settings_panel.dart';
@@ -98,12 +100,18 @@ class _ImageGeneratorScreenState extends ConsumerState<ImageGeneratorScreen> {
     final createState = ref.watch(createGenerationControllerProvider);
     final isGenerating = createState.isLoading || _isUploadingReference;
     final creditsAsync = ref.watch(creditSummaryProvider);
+    final numberOfImages = ref.watch(imageSettingsProvider).numberOfImages;
 
     ref.listen(createGenerationControllerProvider, (previous, next) {
       if (next is AsyncError && next.error is AppException) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text((next.error as AppException).message)),
-        );
+        final error = next.error as AppException;
+        if (error.code == 'INSUFFICIENT_CREDITS') {
+          showInsufficientCreditsDialog(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error.message)),
+          );
+        }
       }
     });
 
@@ -163,7 +171,9 @@ class _ImageGeneratorScreenState extends ConsumerState<ImageGeneratorScreen> {
               const ReferenceImagePickerField(),
               const SizedBox(height: 8),
               const ImageSettingsPanel(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              GenerationCostLabel(generationType: 'image', multiplier: numberOfImages),
+              const SizedBox(height: 4),
               AppButton(
                 label: 'Generate Image',
                 icon: Icons.auto_awesome_rounded,

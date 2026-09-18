@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:createai_studio/core/constants/creation_type.dart';
+import 'package:createai_studio/core/errors/app_exception.dart';
 import 'package:createai_studio/core/network/network_service.dart';
 import 'package:createai_studio/features/generation/data/models/generation_file_model.dart';
 import 'package:createai_studio/features/generation/data/models/generation_model.dart';
@@ -167,6 +168,46 @@ void main() {
           errorMessage: any(named: 'errorMessage'),
           completedAt: any(named: 'completedAt'),
         )).called(1);
+  });
+
+  test('forwards a provider AppException code (e.g. INSUFFICIENT_CREDITS) onto the failure', () async {
+    when(() => network.isConnected).thenAnswer((_) async => true);
+    when(() => repository.createGeneration(
+          userId: any(named: 'userId'),
+          projectId: any(named: 'projectId'),
+          generationType: any(named: 'generationType'),
+          prompt: any(named: 'prompt'),
+        )).thenAnswer((_) async => Result.success(_generation()));
+    when(() => repository.updateGeneration(any(),
+        status: any(named: 'status'),
+        provider: any(named: 'provider'),
+        model: any(named: 'model'),
+        resultText: any(named: 'resultText'),
+        resultUrl: any(named: 'resultUrl'),
+        thumbnailUrl: any(named: 'thumbnailUrl'),
+        metadata: any(named: 'metadata'),
+        errorMessage: any(named: 'errorMessage'),
+        completedAt: any(named: 'completedAt'))).thenAnswer(
+      (_) async => Result.success(_generation(status: 'failed')),
+    );
+    when(() => provider.generate(any())).thenThrow(
+      const GenerationException(
+        message: "You don't have enough credits for this generation.",
+        code: 'INSUFFICIENT_CREDITS',
+      ),
+    );
+
+    final result = await orchestrator.generate(
+      userId: 'user-1',
+      type: CreationType.text,
+      prompt: 'hello world',
+    );
+
+    expect(result.isFailure, isTrue);
+    result.when(
+      success: (_) => fail('expected failure'),
+      failure: (error) => expect(error.code, 'INSUFFICIENT_CREDITS'),
+    );
   });
 
   test('persists additionalFiles via attachFile after a multi-image result', () async {

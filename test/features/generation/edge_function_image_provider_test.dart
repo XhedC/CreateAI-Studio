@@ -78,6 +78,29 @@ void main() {
       expect(result.additionalFiles.single.fileUrl, 'https://example.com/2.png');
     });
 
+    test('sends the generationId from the request', () async {
+      Map<dynamic, dynamic>? capturedBody;
+      final provider = EdgeFunctionImageProvider.withInvoker((name, {body}) async {
+        capturedBody = body as Map;
+        return const FunctionResponse(
+          status: 200,
+          data: {
+            'success': true,
+            'images': [
+              {'storagePath': 'p', 'signedUrl': 'https://example.com/1.png', 'mimeType': 'image/png'},
+            ],
+            'metadata': {},
+          },
+        );
+      });
+
+      await provider.generate(
+        const AIGenerationRequest(prompt: 'a cat', generationId: 'gen-123'),
+      );
+
+      expect(capturedBody!['generationId'], 'gen-123');
+    });
+
     test('forwards the first attachment URL as referenceImagePath', () async {
       String? capturedReferencePath;
       final provider = EdgeFunctionImageProvider.withInvoker((name, {body}) async {
@@ -125,11 +148,13 @@ void main() {
       expect(
         () => provider.generate(const AIGenerationRequest(prompt: 'a cat')),
         throwsA(
-          isA<GenerationException>().having(
-            (e) => e.message,
-            'message',
-            "You don't have enough credits for this generation.",
-          ),
+          isA<GenerationException>()
+              .having(
+                (e) => e.message,
+                'message',
+                "You don't have enough credits for this generation.",
+              )
+              .having((e) => e.code, 'code', 'INSUFFICIENT_CREDITS'),
         ),
       );
     });

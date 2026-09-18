@@ -3,6 +3,7 @@
 import '../../../../core/constants/creation_type.dart';
 import '../../../../core/providers/core_providers.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../credits/presentation/providers/credits_providers.dart';
 import '../../data/models/generation_file_model.dart';
 import '../../data/models/generation_model.dart';
 import '../../data/repositories/generation_repository.dart';
@@ -237,10 +238,18 @@ class CreateGenerationController extends AsyncNotifier<GenerationModel?> {
         if (projectId != null) {
           ref.invalidate(generationsByProjectProvider(projectId));
         }
+        // A credit reservation/charge happened server-side even though this
+        // call succeeded - refresh the balance so Home/Profile/generator
+        // screens reflect it immediately, without requiring an app restart.
+        ref.invalidate(creditSummaryProvider);
         return true;
       },
       failure: (error) {
         state = AsyncError(error, StackTrace.current);
+        // A failed request may still have reserved (and been refunded) or
+        // been rejected for insufficient credits - either way the balance
+        // may have changed, so refresh it here too.
+        ref.invalidate(creditSummaryProvider);
         return false;
       },
     );

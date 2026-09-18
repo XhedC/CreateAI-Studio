@@ -66,8 +66,12 @@ function errorStatusFor(code: string): number {
     case 'INVALID_REQUEST':
     case 'MISSING_REFERENCE_IMAGE':
     case 'INVALID_REFERENCE_IMAGE':
+    case 'INVALID_AMOUNT':
       return 400;
+    case 'FORBIDDEN':
+      return 403;
     case 'RATE_LIMITED':
+    case 'DUPLICATE_REQUEST':
       return 429;
     case 'CONFIGURATION_ERROR':
       return 500;
@@ -152,6 +156,14 @@ Deno.serve(async (req) => {
     );
   }
 
+  const generationId = (body.generationId ?? '').toString().trim();
+  if (!generationId) {
+    return jsonResponse(
+      { success: false, error: 'Missing generationId.', code: 'INVALID_REQUEST' },
+      400,
+    );
+  }
+
   const rawSettings = body.settings ?? {};
   const settings: VideoSettings = {
     aspectRatio: VALID_ASPECT_RATIOS.includes(rawSettings.aspectRatio ?? '')
@@ -171,6 +183,20 @@ Deno.serve(async (req) => {
   };
 
   const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+
+  // --- Verify the generation row: exists, belongs to this caller, and is
+  // actually a video-type generation - see docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md.
+  const { data: generation, error: genFetchError } = await userClient
+    .from('generations')
+    .select('id, user_id, project_id, generation_type')
+    .eq('id', generationId)
+    .maybeSingle();
+  if (genFetchError || !generation || generation.generation_type !== 'video') {
+    return jsonResponse(
+      { success: false, error: 'This generation could not be found.', code: 'FORBIDDEN' },
+      403,
+    );
+  }
 
   // --- Duplicate-request protection --------------------------------------
   const { data: recentGenerations } = await userClient
@@ -194,26 +220,36 @@ Deno.serve(async (req) => {
     );
   }
 
-  // --- Credits check (service role - subscriptions is not client-writable) ---
-  const { data: subscription } = await serviceClient
-    .from('subscriptions')
-    .select('credits_limit, credits_used')
-    .eq('user_id', userId)
-    .eq('status', 'active')
+  // --- Determine the server-trusted cost and reserve credits BEFORE
+  // starting the provider job (video-status later either finalizes this
+  // charge on completion or refunds it on failure - see
+  // docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md). -------------------------------
+  const { data: costRow } = await serviceClient
+    .from('credit_costs')
+    .select('cost')
+    .eq('generation_type', 'video')
+    .is('variant', null)
+    .eq('active', true)
     .maybeSingle();
+  const cost = costRow?.cost ?? VIDEO_CREDIT_COST;
 
-  if (subscription) {
-    const remaining = subscription.credits_limit - subscription.credits_used;
-    if (remaining < VIDEO_CREDIT_COST) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "You don't have enough credits for this generation.",
-          code: 'INSUFFICIENT_CREDITS',
-        },
-        402,
-      );
-    }
+  const { data: reservation, error: reserveError } = await serviceClient.rpc('reserve_credits', {
+    p_user_id: userId,
+    p_amount: cost,
+    p_idempotency_key: generationId,
+    p_generation_id: generationId,
+    p_generation_type: 'video',
+    p_project_id: generation.project_id,
+    p_provider: null,
+    p_description: 'Video generation',
+    p_metadata: { aspectRatio: settings.aspectRatio, duration: settings.duration },
+  });
+  if (reserveError || !reservation?.success) {
+    const code = reservation?.code ?? 'UNKNOWN';
+    return jsonResponse(
+      { success: false, error: reservation?.error ?? 'Something went wrong while checking your credits.', code },
+      errorStatusFor(code),
+    );
   }
 
   // --- Optional reference image ------------------------------------------
@@ -223,6 +259,14 @@ Deno.serve(async (req) => {
       .from(STORAGE_BUCKET)
       .download(referenceImagePath);
     if (downloadError || !fileBlob) {
+      await serviceClient.rpc('refund_generation_credits', {
+        p_user_id: userId,
+        p_amount: cost,
+        p_idempotency_key: `refund:${generationId}`,
+        p_generation_id: generationId,
+        p_description: 'Refund: could not read reference image',
+        p_metadata: {},
+      });
       return jsonResponse(
         {
           success: false,
@@ -244,6 +288,14 @@ Deno.serve(async (req) => {
     const provider = resolveProvider();
     job = await provider.createJob({ prompt, settings, referenceImage });
   } catch (error) {
+    await serviceClient.rpc('refund_generation_credits', {
+      p_user_id: userId,
+      p_amount: cost,
+      p_idempotency_key: `refund:${generationId}`,
+      p_generation_id: generationId,
+      p_description: 'Refund: provider error starting job',
+      p_metadata: {},
+    });
     if (error instanceof ProviderError) {
       return jsonResponse(
         { success: false, error: error.message, code: error.code },
@@ -261,21 +313,11 @@ Deno.serve(async (req) => {
     );
   }
 
-  // --- Deduct credits now (job creation is the billable event) -----------
-  if (subscription) {
-    await serviceClient
-      .from('subscriptions')
-      .update({ credits_used: subscription.credits_used + VIDEO_CREDIT_COST })
-      .eq('user_id', userId);
-
-    await serviceClient.from('credit_transactions').insert({
-      user_id: userId,
-      amount: -VIDEO_CREDIT_COST,
-      transaction_type: 'generation',
-      description: `Video generation (${job.providerName})`,
-      reference_id: null,
-    });
-  }
+  // Credits stay reserved (charged) while the job runs - video-status
+  // finalizes this charge on completion, or refunds it if the provider
+  // reports the job failed. A polling timeout with no definitive provider
+  // answer is deliberately left charged (an "ambiguous state", per the
+  // brief) rather than auto-refunded - see docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md.
 
   return jsonResponse({
     success: true,
@@ -291,6 +333,7 @@ Deno.serve(async (req) => {
       style: settings.style,
       fps: settings.fps,
       jobId: job.jobId,
+      creditsCharged: cost,
       ...job.metadata,
     },
   });

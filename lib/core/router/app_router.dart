@@ -2,6 +2,9 @@
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/providers/auth_providers.dart';
+import '../../features/credits/presentation/screens/credit_history_screen.dart';
+import '../../features/credits/presentation/screens/plan_screen.dart';
+import '../../features/credits/presentation/screens/usage_dashboard_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
@@ -152,6 +155,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.notifications,
         builder: (context, state) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.plans,
+        builder: (context, state) => const PlanScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.usageDashboard,
+        builder: (context, state) => const UsageDashboardScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.creditHistory,
+        builder: (context, state) => const CreditHistoryScreen(),
       ),
     ],
   );

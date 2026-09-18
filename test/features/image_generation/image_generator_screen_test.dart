@@ -7,7 +7,11 @@ import 'package:createai_studio/core/utils/result.dart';
 import 'package:createai_studio/features/auth/data/models/app_user.dart';
 import 'package:createai_studio/features/auth/data/repositories/auth_repository.dart';
 import 'package:createai_studio/features/auth/presentation/providers/auth_providers.dart';
+import 'package:createai_studio/features/credits/data/models/credit_cost.dart';
 import 'package:createai_studio/features/credits/data/models/credit_summary.dart';
+import 'package:createai_studio/features/credits/data/models/credit_transaction.dart';
+import 'package:createai_studio/features/credits/data/models/plan.dart';
+import 'package:createai_studio/features/credits/data/models/usage_record.dart';
 import 'package:createai_studio/features/credits/data/repositories/credits_repository.dart';
 import 'package:createai_studio/features/credits/presentation/providers/credits_providers.dart';
 import 'package:createai_studio/features/generation/data/models/generation_model.dart';
@@ -40,6 +44,20 @@ class _FakeCreditsRepository implements CreditsRepository {
   @override
   Future<Result<CreditSummary>> getSummary(String userId) async =>
       const Result.success(CreditSummary(planName: 'Free', creditsLimit: 50, creditsUsed: 10));
+  @override
+  Future<Result<List<Plan>>> getPlans() async => const Result.success([]);
+  @override
+  Future<Result<List<CreditCost>>> getCreditCosts() async => const Result.success([]);
+  @override
+  Future<Result<List<CreditTransaction>>> getCreditTransactions(
+    String userId, {
+    int limit = 20,
+    int offset = 0,
+  }) async =>
+      const Result.success([]);
+  @override
+  Future<Result<List<UsageRecord>>> getUsageRecords(String userId, {int limit = 200}) async =>
+      const Result.success([]);
 }
 
 /// Lets each test drive the Create controller's [AsyncValue] directly,

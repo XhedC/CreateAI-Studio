@@ -68,11 +68,13 @@ void main() {
           const AIGenerationRequest(prompt: 'a funnel', generationId: 'gen-1'),
         ),
         throwsA(
-          isA<GenerationException>().having(
-            (e) => e.message,
-            'message',
-            "You don't have enough credits for this generation.",
-          ),
+          isA<GenerationException>()
+              .having(
+                (e) => e.message,
+                'message',
+                "You don't have enough credits for this generation.",
+              )
+              .having((e) => e.code, 'code', 'INSUFFICIENT_CREDITS'),
         ),
       );
     });

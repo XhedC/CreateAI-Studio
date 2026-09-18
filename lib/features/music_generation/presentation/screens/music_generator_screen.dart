@@ -8,6 +8,8 @@ import '../../../../core/router/route_paths.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../credits/presentation/providers/credits_providers.dart';
+import '../../../credits/presentation/widgets/generation_cost_label.dart';
+import '../../../credits/presentation/widgets/insufficient_credits_dialog.dart';
 import '../../../generation/presentation/providers/generation_providers.dart';
 import '../../../generation/services/ai_provider.dart';
 import '../providers/music_generation_providers.dart';
@@ -92,9 +94,14 @@ class _MusicGeneratorScreenState extends ConsumerState<MusicGeneratorScreen> {
 
     ref.listen(createGenerationControllerProvider, (previous, next) {
       if (next is AsyncError && next.error is AppException) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text((next.error as AppException).message)),
-        );
+        final error = next.error as AppException;
+        if (error.code == 'INSUFFICIENT_CREDITS') {
+          showInsufficientCreditsDialog(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error.message)),
+          );
+        }
       }
     });
 
@@ -183,7 +190,9 @@ class _MusicGeneratorScreenState extends ConsumerState<MusicGeneratorScreen> {
               ),
               const SizedBox(height: 8),
               const MusicSettingsPanel(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              const GenerationCostLabel(generationType: 'music'),
+              const SizedBox(height: 4),
               AppButton(
                 label: 'Generate Music',
                 icon: Icons.music_note_rounded,

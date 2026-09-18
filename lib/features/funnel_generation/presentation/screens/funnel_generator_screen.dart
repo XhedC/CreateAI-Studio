@@ -9,6 +9,8 @@ import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../credits/presentation/providers/credits_providers.dart';
+import '../../../credits/presentation/widgets/generation_cost_label.dart';
+import '../../../credits/presentation/widgets/insufficient_credits_dialog.dart';
 import '../../../generation/presentation/providers/generation_providers.dart';
 import '../../../image_generation/data/models/reference_image.dart';
 import '../../data/models/funnel_schema.dart';
@@ -117,9 +119,14 @@ class _FunnelGeneratorScreenState extends ConsumerState<FunnelGeneratorScreen> {
 
     ref.listen(createGenerationControllerProvider, (previous, next) {
       if (next is AsyncError && next.error is AppException) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text((next.error as AppException).message)),
-        );
+        final error = next.error as AppException;
+        if (error.code == 'INSUFFICIENT_CREDITS') {
+          showInsufficientCreditsDialog(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error.message)),
+          );
+        }
       }
     });
 
@@ -269,7 +276,9 @@ class _FunnelGeneratorScreenState extends ConsumerState<FunnelGeneratorScreen> {
                 provider: funnelProductImageProvider,
                 label: 'Upload Product / Reference Image',
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              const GenerationCostLabel(generationType: 'funnel'),
+              const SizedBox(height: 4),
               AppButton(
                 label: 'Generate Funnel',
                 icon: Icons.web_outlined,

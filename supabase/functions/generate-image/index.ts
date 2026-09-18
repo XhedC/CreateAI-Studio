@@ -85,8 +85,12 @@ function errorStatusFor(code: string): number {
     case "INVALID_REQUEST":
     case "INVALID_REFERENCE_IMAGE":
     case "UNSUPPORTED_REFERENCE_IMAGE":
+    case "INVALID_AMOUNT":
       return 400;
+    case "FORBIDDEN":
+      return 403;
     case "RATE_LIMITED":
+    case "DUPLICATE_REQUEST":
       return 429;
     case "CONFIGURATION_ERROR":
       return 500;
@@ -167,6 +171,14 @@ Deno.serve(async (req) => {
     );
   }
 
+  const generationId = (body.generationId ?? "").toString().trim();
+  if (!generationId) {
+    return jsonResponse(
+      { success: false, error: "Missing generationId.", code: "INVALID_REQUEST" },
+      400,
+    );
+  }
+
   const rawSettings = body.settings ?? {};
   const settings: ImageSettings = {
     aspectRatio: VALID_ASPECT_RATIOS.includes(rawSettings.aspectRatio ?? "")
@@ -186,6 +198,21 @@ Deno.serve(async (req) => {
   };
 
   const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+
+  // --- Verify the generation row: exists, belongs to this caller, and is
+  // actually an image-type generation. A generationId alone is never
+  // treated as authorization by itself - see docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md.
+  const { data: generation, error: genFetchError } = await userClient
+    .from("generations")
+    .select("id, user_id, project_id, generation_type")
+    .eq("id", generationId)
+    .maybeSingle();
+  if (genFetchError || !generation || generation.generation_type !== "image") {
+    return jsonResponse(
+      { success: false, error: "This generation could not be found.", code: "FORBIDDEN" },
+      403,
+    );
+  }
 
   // --- Duplicate-request protection --------------------------------------
   // The Flutter orchestrator already marks the new generation "processing"
@@ -212,32 +239,54 @@ Deno.serve(async (req) => {
     );
   }
 
-  // --- Credits check (subscriptions is not client-writable, but IS
-  // client-readable - we still use the service client here so a missing
-  // row can't be worked around, and so this check can't be bypassed by a
-  // future RLS change on the read policy). ------------------------------
-  const { data: subscription } = await serviceClient
-    .from("subscriptions")
-    .select("credits_limit, credits_used")
-    .eq("user_id", userId)
-    .eq("status", "active")
+  // --- Determine the server-trusted cost and reserve credits BEFORE
+  // calling the provider (see docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md). The
+  // client-provided `settings.numberOfImages` only affects HOW MANY images
+  // are requested, never the per-image price - that always comes from
+  // `credit_costs`, never from the request body. ---------------------------
+  const { data: perImageCostRow } = await serviceClient
+    .from("credit_costs")
+    .select("cost")
+    .eq("generation_type", "image")
+    .is("variant", null)
+    .eq("active", true)
     .maybeSingle();
+  const perImageCost = perImageCostRow?.cost ?? 1;
+  const totalCost = perImageCost * settings.numberOfImages;
 
-  // Development-safe default: if no subscription row exists (shouldn't
-  // happen once the Phase 1 handle_new_user trigger has run, but a Phase 2
-  // dev/test account might predate it), don't block generation.
-  if (subscription) {
-    const remaining = subscription.credits_limit - subscription.credits_used;
-    if (remaining < settings.numberOfImages) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "You don't have enough credits for this generation.",
-          code: "INSUFFICIENT_CREDITS",
-        },
-        402,
-      );
-    }
+  const { data: reservation, error: reserveError } = await serviceClient.rpc("reserve_credits", {
+    p_user_id: userId,
+    p_amount: totalCost,
+    p_idempotency_key: generationId,
+    p_generation_id: generationId,
+    p_generation_type: "image",
+    p_project_id: generation.project_id,
+    p_provider: null,
+    p_description: `Image generation (${settings.numberOfImages} image${settings.numberOfImages > 1 ? "s" : ""})`,
+    p_metadata: { aspectRatio: settings.aspectRatio, quality: settings.quality, style: settings.style },
+  });
+  if (reserveError || !reservation?.success) {
+    const code = reservation?.code ?? "UNKNOWN";
+    return jsonResponse(
+      { success: false, error: reservation?.error ?? "Something went wrong while checking your credits.", code },
+      errorStatusFor(code),
+    );
+  }
+
+  // Credits are already reserved above - any failure from here on must
+  // refund them before returning an error (see docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md
+  // "Failed generations"). Idempotent: a retried failure for the same
+  // generation only ever refunds once (refund_generation_credits itself
+  // guards this), so calling this helper from multiple catch sites is safe.
+  async function refundReservation(reason: string) {
+    await serviceClient.rpc("refund_generation_credits", {
+      p_user_id: userId,
+      p_amount: totalCost,
+      p_idempotency_key: `refund:${generationId}`,
+      p_generation_id: generationId,
+      p_description: `Refund: ${reason}`,
+      p_metadata: {},
+    });
   }
 
   // --- Optional reference image ------------------------------------------
@@ -247,6 +296,7 @@ Deno.serve(async (req) => {
       .from(STORAGE_BUCKET)
       .download(body.referenceImagePath);
     if (downloadError || !fileBlob) {
+      await refundReservation("could not read reference image");
       return jsonResponse(
         {
           success: false,
@@ -268,6 +318,7 @@ Deno.serve(async (req) => {
     const provider = resolveProvider();
     result = await provider.generate({ prompt, settings, referenceImage });
   } catch (error) {
+    await refundReservation("provider error");
     if (error instanceof ProviderError) {
       return jsonResponse(
         { success: false, error: error.message, code: error.code },
@@ -306,6 +357,7 @@ Deno.serve(async (req) => {
       });
     if (uploadError) {
       console.error("Storage upload failed", uploadError);
+      await refundReservation("storage upload failed");
       return jsonResponse(
         {
           success: false,
@@ -320,6 +372,7 @@ Deno.serve(async (req) => {
       .from(STORAGE_BUCKET)
       .createSignedUrl(path, 60 * 60);
     if (signError || !signed) {
+      await refundReservation("could not create preview link");
       return jsonResponse(
         {
           success: false,
@@ -338,23 +391,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  // --- Deduct credits (service role - see comment above) -----------------
-  if (subscription) {
-    await serviceClient
-      .from("subscriptions")
-      .update({ credits_used: subscription.credits_used + settings.numberOfImages })
-      .eq("user_id", userId);
-
-    await serviceClient.from("credit_transactions").insert({
-      user_id: userId,
-      amount: -settings.numberOfImages,
-      transaction_type: "generation",
-      description: `Image generation (${settings.numberOfImages} image${
-        settings.numberOfImages > 1 ? "s" : ""
-      }, ${result.providerName})`,
-      reference_id: null,
-    });
-  }
+  // --- Finalize the charge (credits already reserved above; this just
+  // marks the usage record completed - see reserve_credits()). -----------
+  await serviceClient.rpc("finalize_generation_charge", {
+    p_generation_id: generationId,
+    p_metadata: { provider: result.providerName, model: result.modelName },
+  });
 
   return jsonResponse({
     success: true,
@@ -366,6 +408,7 @@ Deno.serve(async (req) => {
       quality: settings.quality,
       style: settings.style,
       numberOfImages: settings.numberOfImages,
+      creditsCharged: totalCost,
       ...result.metadata,
     },
   });

@@ -50,13 +50,14 @@ class EdgeFunctionMusicProvider implements MusicAIProvider {
       response = await _invoke(
         functionName,
         body: {
+          'generationId': request.generationId,
           'prompt': request.prompt,
           'lyrics': lyrics,
           'settings': settings,
         },
       );
     } on FunctionException catch (e) {
-      throw GenerationException(message: _messageFrom(e.details));
+      throw GenerationException(message: _messageFrom(e.details), code: _codeFrom(e.details));
     } catch (_) {
       throw const GenerationException(
         message: 'Could not reach the music generation service. Please try again.',
@@ -65,7 +66,7 @@ class EdgeFunctionMusicProvider implements MusicAIProvider {
 
     final data = response.data;
     if (data is! Map || data['success'] != true) {
-      throw GenerationException(message: _messageFrom(data));
+      throw GenerationException(message: _messageFrom(data), code: _codeFrom(data));
     }
 
     final audio = data['audio'] as Map?;
@@ -95,5 +96,12 @@ class EdgeFunctionMusicProvider implements MusicAIProvider {
       return details['error'] as String;
     }
     return 'Something went wrong while generating your music. Please try again.';
+  }
+
+  String? _codeFrom(Object? details) {
+    if (details is Map && details['code'] is String) {
+      return details['code'] as String;
+    }
+    return null;
   }
 }

@@ -62,6 +62,28 @@ void main() {
       expect(capturedBody!['referenceImagePath'], 'user-1/uploads/reference.png');
     });
 
+    test('sends the generationId from the request', () async {
+      Map<dynamic, dynamic>? capturedBody;
+      final provider = EdgeFunctionVideoProvider.withInvoker((name, {body}) async {
+        capturedBody = body as Map;
+        return const FunctionResponse(
+          status: 200,
+          data: {
+            'success': true,
+            'status': 'processing',
+            'jobId': 'job-1',
+            'metadata': {},
+          },
+        );
+      });
+
+      await provider.generate(
+        const AIGenerationRequest(prompt: 'a video', generationId: 'gen-123'),
+      );
+
+      expect(capturedBody!['generationId'], 'gen-123');
+    });
+
     test('throws a GenerationException with the server message on FunctionException', () {
       final provider = EdgeFunctionVideoProvider.withInvoker((name, {body}) async {
         throw const FunctionException(
@@ -77,11 +99,13 @@ void main() {
       expect(
         () => provider.generate(const AIGenerationRequest(prompt: 'a video')),
         throwsA(
-          isA<GenerationException>().having(
-            (e) => e.message,
-            'message',
-            "You don't have enough credits for this generation.",
-          ),
+          isA<GenerationException>()
+              .having(
+                (e) => e.message,
+                'message',
+                "You don't have enough credits for this generation.",
+              )
+              .having((e) => e.code, 'code', 'INSUFFICIENT_CREDITS'),
         ),
       );
     });

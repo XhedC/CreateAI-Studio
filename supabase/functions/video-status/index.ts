@@ -82,7 +82,8 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  if (!supabaseUrl || !anonKey) {
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return jsonResponse(
       { success: false, error: 'Server misconfiguration.', code: 'CONFIGURATION_ERROR' },
       500,
@@ -92,6 +93,10 @@ Deno.serve(async (req) => {
   const userClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authHeader } },
   });
+  // Service-role client, scoped ONLY to finalizing/refunding the credit
+  // reservation `generate-video` already made - see
+  // docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md. Never used for `generations` writes.
+  const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
   const { data: userData, error: userError } = await userClient.auth.getUser();
   if (userError || !userData?.user) {
@@ -179,6 +184,27 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: true, status: 'processing' });
   }
   if (result.status === 'failed') {
+    // Refund the credits generate-video reserved for this job - the
+    // provider has definitively reported failure, so this is not the
+    // "ambiguous state" the brief says to leave charged (that's a client
+    // polling timeout, handled separately - see docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md).
+    const { data: chargeTx } = await serviceClient
+      .from('credit_transactions')
+      .select('amount')
+      .eq('user_id', userId)
+      .eq('reference_id', generationId)
+      .eq('transaction_type', 'GENERATION_CHARGE')
+      .maybeSingle();
+    if (chargeTx && chargeTx.amount < 0) {
+      await serviceClient.rpc('refund_generation_credits', {
+        p_user_id: userId,
+        p_amount: -chargeTx.amount,
+        p_idempotency_key: `refund:${generationId}`,
+        p_generation_id: generationId,
+        p_description: 'Refund: video generation failed',
+        p_metadata: {},
+      });
+    }
     return jsonResponse({ success: true, status: 'failed', error: result.error });
   }
 
@@ -226,6 +252,11 @@ Deno.serve(async (req) => {
       thumbnailUrl = signedThumb?.signedUrl ?? null;
     }
   }
+
+  await serviceClient.rpc('finalize_generation_charge', {
+    p_generation_id: generationId,
+    p_metadata: { mimeType: result.video.mimeType },
+  });
 
   return jsonResponse({
     success: true,

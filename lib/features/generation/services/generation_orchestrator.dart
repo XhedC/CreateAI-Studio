@@ -143,7 +143,11 @@ class GenerationOrchestrator {
             completedAt: DateTime.now(),
           );
           return Result.failure(
-            GenerationException(message: message, cause: e),
+            GenerationException(
+              message: message,
+              cause: e,
+              code: e is AppException ? e.code : null,
+            ),
           );
         }
       },

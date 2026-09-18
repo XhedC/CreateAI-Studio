@@ -71,6 +71,31 @@ void main() {
       expect((capturedBody!['settings'] as Map).containsKey('lyrics'), isFalse);
     });
 
+    test('sends the generationId from the request', () async {
+      Map<dynamic, dynamic>? capturedBody;
+      final provider = EdgeFunctionMusicProvider.withInvoker((name, {body}) async {
+        capturedBody = body as Map;
+        return const FunctionResponse(
+          status: 200,
+          data: {
+            'success': true,
+            'audio': {
+              'storagePath': 'p',
+              'signedUrl': 'https://example.com/result.wav',
+              'mimeType': 'audio/wav',
+            },
+            'metadata': {},
+          },
+        );
+      });
+
+      await provider.generate(
+        const AIGenerationRequest(prompt: 'a song', generationId: 'gen-123'),
+      );
+
+      expect(capturedBody!['generationId'], 'gen-123');
+    });
+
     test('throws a GenerationException with the server message on FunctionException', () {
       final provider = EdgeFunctionMusicProvider.withInvoker((name, {body}) async {
         throw const FunctionException(
@@ -86,11 +111,13 @@ void main() {
       expect(
         () => provider.generate(const AIGenerationRequest(prompt: 'a song')),
         throwsA(
-          isA<GenerationException>().having(
-            (e) => e.message,
-            'message',
-            "You don't have enough credits for this generation.",
-          ),
+          isA<GenerationException>()
+              .having(
+                (e) => e.message,
+                'message',
+                "You don't have enough credits for this generation.",
+              )
+              .having((e) => e.code, 'code', 'INSUFFICIENT_CREDITS'),
         ),
       );
     });
