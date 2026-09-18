@@ -18,6 +18,7 @@ import '../../features/video_generation/presentation/screens/video_generator_scr
 import '../../features/funnel_generation/presentation/screens/funnel_generator_screen.dart';
 import '../../features/funnel_generation/presentation/screens/funnel_editor_screen.dart';
 import '../../features/funnel_generation/presentation/screens/funnel_preview_screen.dart';
+import '../../features/funnel_generation/presentation/screens/public_funnel_view_screen.dart';
 import '../../features/notifications/presentation/screens/notifications_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/projects/presentation/screens/project_detail_screen.dart';
@@ -50,7 +51,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isAuthRoute = location == RoutePaths.login ||
           location == RoutePaths.register ||
           location == RoutePaths.forgotPassword;
+      // The ONLY route a signed-out (or fully anonymous) visitor may reach -
+      // a published funnel's public page. Everything else in this app
+      // still requires a session; this is a narrow, single-prefix carve-out,
+      // not a change to how auth/splash resolves for every other route -
+      // see docs/PHASE_7_PUBLISHING.md "Public routing".
+      final isPublicFunnelRoute = location.startsWith('${RoutePaths.publicFunnelPrefix}/');
 
+      if (isPublicFunnelRoute) {
+        return null;
+      }
       if (isLoading) {
         return location == RoutePaths.splash ? null : RoutePaths.splash;
       }
@@ -141,6 +151,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/funnels/:id/preview',
         builder: (context, state) => FunnelPreviewScreen(
           funnelId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '${RoutePaths.publicFunnelPrefix}/:slug',
+        builder: (context, state) => PublicFunnelViewScreen(
+          slug: state.pathParameters['slug']!,
         ),
       ),
       GoRoute(

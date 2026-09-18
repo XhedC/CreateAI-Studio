@@ -1,12 +1,18 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/router/route_paths.dart';
 import '../../../../core/widgets/app_error_widget.dart';
 import '../../../../core/widgets/loading_widget.dart';
+import '../../data/models/funnel_model.dart';
 import '../../data/models/funnel_schema.dart';
 import '../providers/funnel_providers.dart';
+import '../widgets/publish_status_card.dart';
 import '../widgets/section_editor_dialog.dart';
 
 /// A basic, stable structured funnel editor - not a full website builder.
@@ -33,6 +39,29 @@ class _FunnelEditorScreenState extends ConsumerState<FunnelEditorScreen> {
     setState(() => _isSaving = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(ok ? 'Funnel saved.' : 'Unable to save the funnel. Please try again.')),
+    );
+  }
+
+  /// Exports the funnel's current draft as a JSON file - see
+  /// docs/PHASE_7_PUBLISHING.md "Export". Deliberately exports only
+  /// [FunnelSchema.toJson] (the same content already visible in the
+  /// editor) - never row metadata like `id`/`user_id`, and never anything
+  /// from credits/subscriptions or Supabase credentials.
+  Future<void> _exportJson(FunnelModel funnel) async {
+    final json = const JsonEncoder.withIndent('  ').convert(funnel.content.toJson());
+    final fileName =
+        '${funnel.content.name.trim().isEmpty ? 'funnel' : funnel.content.name.trim()}.json'
+            .replaceAll(RegExp(r'[^\w.\- ]'), '_');
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile.fromData(
+            Uint8List.fromList(utf8.encode(json)),
+            mimeType: 'application/json',
+            name: fileName,
+          ),
+        ],
+      ),
     );
   }
 
@@ -117,6 +146,18 @@ class _FunnelEditorScreenState extends ConsumerState<FunnelEditorScreen> {
                 : const Icon(Icons.save_outlined),
             onPressed: _isSaving ? null : _save,
           ),
+          PopupMenuButton<void>(
+            tooltip: 'More',
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                child: const Text('Export JSON'),
+                onTap: () {
+                  final funnel = funnelAsync.value;
+                  if (funnel != null) _exportJson(funnel);
+                },
+              ),
+            ],
+          ),
         ],
       ),
       body: funnelAsync.when(
@@ -127,7 +168,7 @@ class _FunnelEditorScreenState extends ConsumerState<FunnelEditorScreen> {
           return Column(
             children: [
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: TextFormField(
                   key: ValueKey(funnel.content.name),
                   initialValue: funnel.content.name,
@@ -136,6 +177,7 @@ class _FunnelEditorScreenState extends ConsumerState<FunnelEditorScreen> {
                       ref.read(funnelEditorProvider(widget.funnelId).notifier).updateName(value),
                 ),
               ),
+              PublishStatusCard(funnel: funnel),
               Expanded(
                 child: ReorderableListView.builder(
                   padding: const EdgeInsets.only(bottom: 90),

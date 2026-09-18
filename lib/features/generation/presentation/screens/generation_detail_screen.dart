@@ -593,6 +593,21 @@ class _GenerationDetailScreenState extends ConsumerState<GenerationDetailScreen>
                           ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: (funnel.published ? colors.primary : colors.onSurfaceVariant)
+                          .withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      funnel.published ? 'Published' : (funnel.publicSlug != null ? 'Unpublished' : 'Draft'),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: funnel.published ? colors.primary : colors.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),

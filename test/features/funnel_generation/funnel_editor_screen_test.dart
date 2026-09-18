@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:createai_studio/core/utils/result.dart';
 import 'package:createai_studio/features/funnel_generation/data/models/funnel_model.dart';
 import 'package:createai_studio/features/funnel_generation/data/models/funnel_schema.dart';
+import 'package:createai_studio/features/funnel_generation/data/models/public_funnel_view.dart';
 import 'package:createai_studio/features/funnel_generation/data/repositories/funnel_repository.dart';
 import 'package:createai_studio/features/funnel_generation/presentation/providers/funnel_providers.dart';
 import 'package:createai_studio/features/funnel_generation/presentation/screens/funnel_editor_screen.dart';
@@ -56,6 +57,12 @@ class _FakeFunnelRepository implements FunnelRepository {
     lastSaved = _funnel;
     return Result.success(_funnel);
   }
+  @override
+  Future<Result<FunnelModel>> publishFunnel(String id) => throw UnimplementedError();
+  @override
+  Future<Result<FunnelModel>> unpublishFunnel(String id) => throw UnimplementedError();
+  @override
+  Future<Result<PublicFunnelView?>> getPublicFunnel(String slug) => throw UnimplementedError();
 }
 
 FunnelModel _model() => FunnelModel(

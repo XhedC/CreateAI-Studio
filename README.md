@@ -34,7 +34,7 @@ mocked pending a later phase.
 ## Technology stack
 
 - **Frontend**: Flutter (Dart 3.7+), Material 3, [Riverpod](https://riverpod.dev) for state/DI, [go_router](https://pub.dev/packages/go_router) for navigation.
-- **Backend**: [Supabase](https://supabase.com) - Postgres, Auth, Storage, Row Level Security, and five Edge Functions (`generate-image`, `generate-music`, `generate-video`, `video-status`, `generate-funnel`) that hold AI provider secrets server-side - see [docs/image-generation.md](docs/image-generation.md), [docs/music-generation.md](docs/music-generation.md), [docs/video-generation.md](docs/video-generation.md), and [docs/funnel-generation.md](docs/funnel-generation.md).
+- **Backend**: [Supabase](https://supabase.com) - Postgres, Auth, Storage, Row Level Security, and six Edge Functions (`generate-image`, `generate-music`, `generate-video`, `video-status`, `generate-funnel`, `publish-funnel`) that hold AI provider secrets server-side - see [docs/image-generation.md](docs/image-generation.md), [docs/music-generation.md](docs/music-generation.md), [docs/video-generation.md](docs/video-generation.md), [docs/funnel-generation.md](docs/funnel-generation.md), and [docs/PHASE_7_PUBLISHING.md](docs/PHASE_7_PUBLISHING.md). Public funnel access/lead submission go through two `SECURITY DEFINER` SQL RPCs instead of a seventh Edge Function - see that same doc for why.
 - **Audio**: [just_audio](https://pub.dev/packages/just_audio) powers a single app-wide player shared by the Music Detail screen and the mini-player docked above the bottom navigation.
 - **Video**: [video_player](https://pub.dev/packages/video_player) + [chewie](https://pub.dev/packages/chewie) power a reusable video player with fullscreen/mute/seek controls.
 - **Funnels**: a structured JSON schema (versioned, validated, safely corrected) rendered entirely as Flutter widgets - no HTML/WebView anywhere in the app.
@@ -71,7 +71,8 @@ supabase/
     generate-video/  # Edge Function: starts an async job, returns immediately (Phase 4)
     video-status/    # Edge Function: polled by the client, resolves the job (Phase 4)
     generate-funnel/ # Edge Function: validates AI output into a FunnelSchema, stores it (Phase 5)
-docs/              # architecture, database, AI-integration, image/music/video/funnel-generation deep dives
+    publish-funnel/  # Edge Function: validates, slugs, and snapshots a funnel for publishing (Phase 7)
+docs/              # architecture, database, AI-integration, image/music/video/funnel-generation/publishing deep dives
 env/               # local dart-define config (gitignored except *.example)
 ```
 
@@ -146,7 +147,7 @@ upload.
 This app's own Supabase project was provisioned automatically for this build:
 - URL: `https://gnhxqthfskshxrnwwugb.supabase.co`
 - All migrations in `supabase/migrations/` have already been applied to it (tables, indexes, RLS, storage bucket + policies, triggers, including `funnels`/`funnel_leads`).
-- The `generate-image`, `generate-music`, `generate-video`, `video-status`, and `generate-funnel` Edge Functions are already deployed to it and reachable.
+- The `generate-image`, `generate-music`, `generate-video`, `video-status`, `generate-funnel`, and `publish-funnel` Edge Functions are already deployed to it and reachable, along with the `get_public_funnel`/`submit_funnel_lead` public RPC functions.
 - `env/dev.json` already points at it, so `flutter run --dart-define-from-file=env/dev.json` works immediately.
 - Treat it as a personal/dev project: rotate the key or create your own project before shipping to production.
 
@@ -249,6 +250,15 @@ flutter test
 - A `SubscriptionProvider` abstract interface for a future payment integration (Stripe, Play Billing, ...) - unimplemented, no credentials, mirrors the existing `AIProvider` pattern.
 - See [docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md](docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md) for the full design, race-safety, and idempotency writeup.
 
+**Phase 7 (Publishing, Export & Sharing):**
+- A funnel can now be Published: `publish-funnel` validates it, generates a stable, collision-safe public slug (once, never regenerated), and snapshots its content into `published_content` - the draft can keep changing afterward without affecting what's already public until the owner explicitly republishes.
+- Public data access never widens `funnels`' RLS - a public visitor's client (just the anon key, no session) reads through a `SECURITY DEFINER` RPC (`get_public_funnel`) that hand-picks safe fields only, and submits leads through a second RPC (`submit_funnel_lead`) that validates and inserts server-side; `funnel_leads` still has zero anonymous-insert RLS policy.
+- A new in-app public route (`/f/:slug`, reachable without signing in) renders the exact same `FunnelRenderer` a signed-in owner's preview uses, so "preview" never shows something different from what's actually public.
+- Publish/Republish/Unpublish controls, a public URL card with Copy Link/Share, and a "Preview Published Version" action are in the Funnel Editor; a JSON export of the funnel's own content is available from its menu.
+- Publishing, viewing, and lead submission cost **zero** AI credits - unrelated to Phase 6's billing, which only the four `generate-*` functions ever touch.
+- No Flutter web platform, no custom-domain hosting, and no real public web deployment were added - `/f/:slug` works fully inside this Android app today; see [docs/PHASE_7_PUBLISHING.md](docs/PHASE_7_PUBLISHING.md) "Future production architecture" for what a real public web frontend would need.
+- See [docs/PHASE_7_PUBLISHING.md](docs/PHASE_7_PUBLISHING.md) for the full publishing lifecycle, slug generation, and security design.
+
 ## What's not yet implemented
 
 - Verified, production-ready AI vendor integrations - the OpenAI (images/funnels) and Stability AI (music/video) implementations are all written against publicly documented endpoints but have not been exercised against a real key; see "known gaps" in [docs/image-generation.md](docs/image-generation.md) / [docs/music-generation.md](docs/music-generation.md) / [docs/video-generation.md](docs/video-generation.md) / [docs/funnel-generation.md](docs/funnel-generation.md) before enabling any of them in production.
@@ -259,17 +269,21 @@ flutter test
 - Guaranteed provider-side job cancellation for video - Cancel stops client polling and marks the generation cancelled server-side, but cannot confirm the provider itself stops the job (no documented endpoint for that).
 - The future Image + Music → Video combined workflow mentioned in the Phase 4 brief - the architecture doesn't block it, but it isn't implemented since no connected provider supports it today.
 - Item-level editing for a funnel section's list content (e.g. individual benefits/testimonials/FAQ entries) - only top-level text fields (headline, title, description, ...) are editable in this version; see [docs/funnel-generation.md](docs/funnel-generation.md).
-- Public funnel publishing, custom domains, HTML/ZIP export, and embed codes - explicitly out of scope for Phase 5; the funnel schema is already structured so a future export/publish pipeline can consume it directly.
-- Anonymous (unauthenticated) lead submission - `funnel_leads` RLS only allows the funnel owner's own session to insert today; a future "publish" phase needs a dedicated, rate-limited Edge Function for real visitor submissions.
+- A real public web deployment, custom domains, and HTML/ZIP export/embed codes - `/f/:slug` is fully functional inside this Android app (Phase 7), but nothing serves it to an actual web browser yet; see [docs/PHASE_7_PUBLISHING.md](docs/PHASE_7_PUBLISHING.md) "Future production architecture."
+- IP-based rate limiting or CAPTCHA on public lead submission - only server-side validation and a short duplicate-submission guard exist today.
+- Page-view/conversion analytics for published funnels - the data model intentionally leaves room for it (see [docs/PHASE_7_PUBLISHING.md](docs/PHASE_7_PUBLISHING.md) "Analytics foundation") but no tracking table or UI exists yet.
+- Long-lived public image URLs for published funnels - a funnel's images use the same 1-hour signed URLs as the authenticated app, so a published page's media can go stale before the page itself is unpublished; see [docs/PHASE_7_PUBLISHING.md](docs/PHASE_7_PUBLISHING.md) "Image and video assets."
 - iOS project files (Android-only, per the brief).
 
 ## Recommended next phase
 
-Real payment-provider integration (Stripe, Google Play Billing, ...) against
-the `SubscriptionProvider` interface Phase 6 already defined, then Play
-Store packaging (real signing config, app icon, privacy policy, permissions
-review). Public funnel publishing (with custom domains/hosting) is a
-natural follow-on once payments exist to gate it.
+A real public web deployment for published funnels (see
+[docs/PHASE_7_PUBLISHING.md](docs/PHASE_7_PUBLISHING.md) "Future production
+architecture" - the backend/RPC layer is already built and tested for this),
+then real payment-provider integration (Stripe, Google Play Billing, ...)
+against the `SubscriptionProvider` interface Phase 6 already defined, then
+Play Store packaging (real signing config, app icon, privacy policy,
+permissions review).
 
 ## Documentation
 
@@ -281,5 +295,6 @@ natural follow-on once payments exist to gate it.
 - [docs/video-generation.md](docs/video-generation.md) - the Phase 4 Edge Functions, the genuinely-async job/poll architecture, provider job security, cancellation, and how to switch providers.
 - [docs/funnel-generation.md](docs/funnel-generation.md) - the Phase 5 funnel schema, JSON validation/safe-correction, the Edge Function, the structured renderer, the editor/preview, leads, and future publishing architecture.
 - [docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md](docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md) - the Phase 6 credit/subscription schema, atomic race-safe charging, idempotency, Edge Function billing integration, and the future payment-provider architecture.
+- [docs/PHASE_7_PUBLISHING.md](docs/PHASE_7_PUBLISHING.md) - the Phase 7 publishing lifecycle, slug generation, published-snapshot strategy, public data access/RLS, lead submission, sharing, export, and the future public web deployment architecture.
 #   C r e a t e A I - S t u d i o  
  

@@ -21,6 +21,11 @@ class FunnelModel extends Equatable {
     this.thumbnailUrl,
     required this.createdAt,
     required this.updatedAt,
+    this.published = false,
+    this.publishedAt,
+    this.unpublishedAt,
+    this.publicSlug,
+    this.publishedVersion = 0,
   });
 
   final String id;
@@ -36,6 +41,24 @@ class FunnelModel extends Equatable {
   final String? thumbnailUrl;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Whether this funnel currently has a live public page - orthogonal to
+  /// [status] (draft/archived). See docs/PHASE_7_PUBLISHING.md.
+  final bool published;
+  final DateTime? publishedAt;
+  final DateTime? unpublishedAt;
+
+  /// Stable once assigned - never regenerated across unpublish/republish.
+  final String? publicSlug;
+
+  /// Incremented on every successful publish/republish.
+  final int publishedVersion;
+
+  /// True once the draft has been edited (`updated_at` bumped) since the
+  /// last publish - i.e. the live public page no longer reflects the
+  /// current draft. Never true for a never-published funnel.
+  bool get hasUnpublishedChanges =>
+      published && publishedAt != null && updatedAt.isAfter(publishedAt!);
 
   factory FunnelModel.fromJson(Map<String, dynamic> json) {
     final rawContent = (json['content'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -58,10 +81,29 @@ class FunnelModel extends Equatable {
       thumbnailUrl: json['thumbnail_url'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
+      published: json['published'] as bool? ?? false,
+      publishedAt: json['published_at'] != null
+          ? DateTime.parse(json['published_at'] as String)
+          : null,
+      unpublishedAt: json['unpublished_at'] != null
+          ? DateTime.parse(json['unpublished_at'] as String)
+          : null,
+      publicSlug: json['public_slug'] as String?,
+      publishedVersion: (json['published_version'] as num?)?.toInt() ?? 0,
     );
   }
 
-  FunnelModel copyWith({String? name, String? funnelType, String? status, FunnelSchema? content}) =>
+  FunnelModel copyWith({
+    String? name,
+    String? funnelType,
+    String? status,
+    FunnelSchema? content,
+    bool? published,
+    DateTime? publishedAt,
+    DateTime? unpublishedAt,
+    String? publicSlug,
+    int? publishedVersion,
+  }) =>
       FunnelModel(
         id: id,
         userId: userId,
@@ -76,6 +118,11 @@ class FunnelModel extends Equatable {
         thumbnailUrl: thumbnailUrl,
         createdAt: createdAt,
         updatedAt: updatedAt,
+        published: published ?? this.published,
+        publishedAt: publishedAt ?? this.publishedAt,
+        unpublishedAt: unpublishedAt ?? this.unpublishedAt,
+        publicSlug: publicSlug ?? this.publicSlug,
+        publishedVersion: publishedVersion ?? this.publishedVersion,
       );
 
   @override
@@ -93,5 +140,10 @@ class FunnelModel extends Equatable {
         thumbnailUrl,
         createdAt,
         updatedAt,
+        published,
+        publishedAt,
+        unpublishedAt,
+        publicSlug,
+        publishedVersion,
       ];
 }

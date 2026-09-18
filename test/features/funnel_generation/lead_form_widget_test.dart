@@ -66,6 +66,15 @@ class _FakeFunnelLeadsRepository implements FunnelLeadsRepository {
   Future<Result<List<FunnelLeadModel>>> getLeads(String funnelId) async => const Result.success([]);
   @override
   Future<Result<void>> deleteLead(String id) async => const Result.success(null);
+  @override
+  Future<Result<void>> submitPublicLead({
+    required String slug,
+    String? name,
+    String? email,
+    String? phone,
+    String? message,
+  }) =>
+      throw UnimplementedError();
 }
 
 Future<_FakeFunnelLeadsRepository> _pumpForm(WidgetTester tester) async {

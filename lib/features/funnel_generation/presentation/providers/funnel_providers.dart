@@ -10,6 +10,7 @@ import '../../../image_generation/presentation/providers/image_generation_provid
 import '../../data/models/funnel_lead_model.dart';
 import '../../data/models/funnel_model.dart';
 import '../../data/models/funnel_schema.dart';
+import '../../data/models/public_funnel_view.dart';
 import '../../data/repositories/funnel_leads_repository.dart';
 import '../../data/repositories/funnel_repository.dart';
 
@@ -239,6 +240,78 @@ final funnelEditorProvider =
   FunnelEditorController.new,
 );
 
+// --- Publishing ------------------------------------------------------------
+
+/// Drives the Funnel Editor's Publish/Republish/Unpublish controls. See
+/// docs/PHASE_7_PUBLISHING.md "Publishing lifecycle". Deliberately a plain
+/// `AsyncNotifier<FunnelModel?>` (not tied to one funnel via `.family`)
+/// mirroring [FunnelDuplicateController] - the editor screen reads the
+/// *result* of the last publish/unpublish action from here, but always
+/// reads the funnel itself from [funnelEditorProvider].
+class FunnelPublishController extends AsyncNotifier<FunnelModel?> {
+  @override
+  Future<FunnelModel?> build() async => null;
+
+  Future<bool> publish(String funnelId) async {
+    state = const AsyncLoading();
+    final result = await ref.read(funnelRepositoryProvider).publishFunnel(funnelId);
+    return result.when(
+      success: (funnel) {
+        state = AsyncData(funnel);
+        _invalidateFunnel(funnel);
+        return true;
+      },
+      failure: (error) {
+        state = AsyncError(error, StackTrace.current);
+        return false;
+      },
+    );
+  }
+
+  Future<bool> unpublish(String funnelId) async {
+    state = const AsyncLoading();
+    final result = await ref.read(funnelRepositoryProvider).unpublishFunnel(funnelId);
+    return result.when(
+      success: (funnel) {
+        state = AsyncData(funnel);
+        _invalidateFunnel(funnel);
+        return true;
+      },
+      failure: (error) {
+        state = AsyncError(error, StackTrace.current);
+        return false;
+      },
+    );
+  }
+
+  void _invalidateFunnel(FunnelModel funnel) {
+    ref.invalidate(funnelByIdProvider(funnel.id));
+    ref.invalidate(funnelByGenerationIdProvider(funnel.generationId));
+    ref.invalidate(funnelEditorProvider(funnel.id));
+  }
+
+  void reset() => state = const AsyncData(null);
+}
+
+final funnelPublishControllerProvider =
+    AsyncNotifierProvider<FunnelPublishController, FunnelModel?>(FunnelPublishController.new);
+
+/// The sanitized public view of a published funnel, by its public slug -
+/// backing both the in-app "Preview Published Version" screen and the
+/// public funnel route (`/f/:slug`).
+///
+/// `AsyncData(null)` covers draft/unpublished/nonexistent slugs alike -
+/// see docs/PHASE_7_PUBLISHING.md "Public error pages" for why those are
+/// deliberately indistinguishable to a visitor ("not found" either way).
+/// A genuine network/server failure surfaces as `AsyncError` instead, so
+/// the UI can tell "this page doesn't exist" apart from "something went
+/// wrong, try again."
+final publicFunnelProvider =
+    FutureProvider.autoDispose.family<PublicFunnelView?, String>((ref, slug) async {
+  final result = await ref.read(funnelRepositoryProvider).getPublicFunnel(slug);
+  return result.when(success: (view) => view, failure: (e) => throw e);
+});
+
 // --- Duplicate -----------------------------------------------------------
 
 /// "Duplicate Funnel": creates a brand-new `generations` row (completed
@@ -380,6 +453,61 @@ class LeadFormController extends Notifier<LeadFormState> {
 
 final leadFormControllerProvider =
     NotifierProvider.autoDispose<LeadFormController, LeadFormState>(LeadFormController.new);
+
+/// The public, fully-anonymous counterpart to [LeadFormController] - no
+/// signed-in session is required or used. Submits through
+/// `submit_funnel_lead` (see [FunnelLeadsRepository.submitPublicLead]),
+/// never through a direct table insert. Kept as a separate controller
+/// rather than branching inside [LeadFormController] so the
+/// authenticated-owner-preview path (already tested in Phase 5) is never
+/// at risk of regressing from a public-facing change.
+class PublicLeadFormController extends Notifier<LeadFormState> {
+  @override
+  LeadFormState build() => const LeadFormState();
+
+  Future<bool> submit({
+    required String slug,
+    String? name,
+    String? email,
+    String? phone,
+    String? message,
+  }) async {
+    if (state.status == LeadFormStatus.submitting) return false;
+    if ((email == null || email.trim().isEmpty) && (phone == null || phone.trim().isEmpty)) {
+      state = const LeadFormState(
+        status: LeadFormStatus.error,
+        errorMessage: 'Please provide an email or phone number.',
+      );
+      return false;
+    }
+
+    state = const LeadFormState(status: LeadFormStatus.submitting);
+    final result = await ref.read(funnelLeadsRepositoryProvider).submitPublicLead(
+          slug: slug,
+          name: name,
+          email: email,
+          phone: phone,
+          message: message,
+        );
+    return result.when(
+      success: (_) {
+        state = const LeadFormState(status: LeadFormStatus.success);
+        return true;
+      },
+      failure: (error) {
+        state = LeadFormState(status: LeadFormStatus.error, errorMessage: error.message);
+        return false;
+      },
+    );
+  }
+
+  void reset() => state = const LeadFormState();
+}
+
+final publicLeadFormControllerProvider =
+    NotifierProvider.autoDispose<PublicLeadFormController, LeadFormState>(
+  PublicLeadFormController.new,
+);
 
 /// Every lead captured by one funnel - used by a future "View leads" screen;
 /// not required for Phase 5's acceptance criteria but wired up now since the

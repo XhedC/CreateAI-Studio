@@ -61,6 +61,17 @@ class GenerationException extends AppException {
   }) : super(message);
 }
 
+/// A funnel publish/unpublish/republish request was rejected - e.g. failed
+/// validation, or the requested public slug could not be reserved.
+class PublishException extends AppException {
+  const PublishException({
+    String message = 'Something went wrong while publishing. Please try again.',
+    super.cause,
+    super.stackTrace,
+    super.code,
+  }) : super(message);
+}
+
 class UnknownException extends AppException {
   const UnknownException({
     String message = 'Something went wrong. Please try again.',

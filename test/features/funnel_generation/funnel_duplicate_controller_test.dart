@@ -7,6 +7,7 @@ import 'package:createai_studio/features/auth/data/repositories/auth_repository.
 import 'package:createai_studio/features/auth/presentation/providers/auth_providers.dart';
 import 'package:createai_studio/features/funnel_generation/data/models/funnel_model.dart';
 import 'package:createai_studio/features/funnel_generation/data/models/funnel_schema.dart';
+import 'package:createai_studio/features/funnel_generation/data/models/public_funnel_view.dart';
 import 'package:createai_studio/features/funnel_generation/data/repositories/funnel_repository.dart';
 import 'package:createai_studio/features/funnel_generation/presentation/providers/funnel_providers.dart';
 import 'package:createai_studio/features/generation/data/models/generation_file_model.dart';
@@ -162,6 +163,12 @@ class _FakeFunnelRepository implements FunnelRepository {
   @override
   Future<Result<FunnelModel>> updateFunnel(String id, {String? name, FunnelSchema? content, String? status}) =>
       throw UnimplementedError();
+  @override
+  Future<Result<FunnelModel>> publishFunnel(String id) => throw UnimplementedError();
+  @override
+  Future<Result<FunnelModel>> unpublishFunnel(String id) => throw UnimplementedError();
+  @override
+  Future<Result<PublicFunnelView?>> getPublicFunnel(String slug) => throw UnimplementedError();
 }
 
 FunnelModel _original() => FunnelModel(

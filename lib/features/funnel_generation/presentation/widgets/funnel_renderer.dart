@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/funnel_schema.dart';
 import 'lead_form_widget.dart';
+import 'public_lead_form_widget.dart';
 
 Color _parseHex(String hex, Color fallback) {
   try {
@@ -31,15 +32,24 @@ class FunnelRenderer extends StatelessWidget {
     super.key,
     required this.schema,
     this.funnelId,
+    this.publicSlug,
     this.onlyVisible = true,
   });
 
   final FunnelSchema schema;
 
   /// Needed to let the lead_form section actually submit into
-  /// `funnel_leads` scoped to this funnel. Null in contexts where that
-  /// isn't meaningful yet (e.g. a thumbnail-only render, if ever added).
+  /// `funnel_leads` scoped to this funnel via the OWNER's own session
+  /// (Phase 5 preview path). Null in contexts where that isn't meaningful
+  /// (e.g. a thumbnail-only render, or the public view below).
   final String? funnelId;
+
+  /// When set, renders the lead_form section for a fully anonymous public
+  /// visitor instead (see [PublicLeadFormWidget]) - used only by the
+  /// public funnel view (Phase 7). Takes precedence over [funnelId] if
+  /// both were somehow provided, since a public page must never expose
+  /// the authenticated-owner submission path.
+  final String? publicSlug;
 
   /// The live Preview screen only shows visible sections; the Editor's own
   /// section list (not this widget) is what lets hidden sections be seen
@@ -382,7 +392,12 @@ class FunnelRenderer extends StatelessWidget {
           if (c['title'] is String)
             Text(c['title'] as String, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 14),
-          if (funnelId != null)
+          if (publicSlug != null)
+            PublicLeadFormWidget(
+              slug: publicSlug!,
+              submitLabel: (c['submitLabel'] as String?) ?? 'Submit',
+            )
+          else if (funnelId != null)
             LeadFormWidget(funnelId: funnelId!, submitLabel: (c['submitLabel'] as String?) ?? 'Submit')
           else
             Text(

@@ -275,13 +275,16 @@ section types are added.
 **`funnel_leads.user_id` is the funnel owner, not the submitting
 visitor** - visitors have no account. This is what lets RLS restrict
 reads to "leads belonging to your own funnels" without a join. Phase 5
-does not implement public publishing, so there's no anonymous visitor
-insert path yet - `LeadFormWidget` submits as the *funnel owner's own*
-authenticated session (useful for testing the component against your own
-funnel today). A future "publish" phase introducing real anonymous
-visitor submissions must add that pathway through a dedicated,
-rate-limited Edge Function using the service role - never by widening this
-table's RLS to `with check (true)`.
+did not implement public publishing, so `LeadFormWidget` only ever
+submitted as the *funnel owner's own* authenticated session (useful for
+testing the component against your own funnel, and still how it works
+today for that owner-preview path). **Phase 7 added the real anonymous
+visitor pathway** - not through a widened RLS policy (this table still
+has zero anonymous-insert policy) and not through an Edge Function
+either, but through a `SECURITY DEFINER` SQL RPC
+(`submit_funnel_lead`) that validates the funnel is published and the
+submitted fields server-side before inserting. See
+[docs/PHASE_7_PUBLISHING.md](PHASE_7_PUBLISHING.md) "Public lead form."
 
 ## Storage / image integration
 
@@ -382,18 +385,24 @@ third-party service.
   Pharmacy Marketing" example describes. No new project-side code was
   needed.
 
-## Export / publishing architecture (prepared, not implemented)
+## Export / publishing architecture
 
-Because the funnel is a validated, versioned, structured JSON document
-(not a pile of ad-hoc state), it is already in the right shape for a
-future export/publish pipeline to consume: an HTML exporter would walk
-the same `sections[]` list `FunnelRenderer` already knows how to
-interpret; a "publish" flow would flip `funnels.status` from `draft` to a
-future `published` value and mint a public URL. **None of that is
-implemented in Phase 5** - `status` only ever takes `draft`/`archived`
-today, there is no public read policy on `funnels`, and no HTML/ZIP export
-code exists yet. This is intentional, per the brief's explicit "do not
-implement public hosting or custom domains yet."
+**Implemented in Phase 7** - see
+[docs/PHASE_7_PUBLISHING.md](PHASE_7_PUBLISHING.md) for the full design.
+Summary: a funnel can be published (a new, orthogonal
+`published`/`published_at`/`public_slug`/`published_content`/
+`published_version` set of columns on `funnels` - `status` itself is
+untouched and still only ever `draft`/`archived`), which snapshots
+`content` and mints a stable, collision-safe public slug. Public visitors
+read through two `SECURITY DEFINER` RPCs
+(`get_public_funnel`/`submit_funnel_lead`) rather than a public RLS
+policy on `funnels` - as described above, `funnel_leads` still has no
+anonymous-insert RLS policy. A JSON export of a funnel's own content is
+available from the Funnel Editor. HTML/ZIP export and a real public web
+deployment (custom domains, hosting) remain **not** implemented -
+[docs/PHASE_7_PUBLISHING.md](PHASE_7_PUBLISHING.md)'s "Known limitations"
+and "Future production architecture" sections cover exactly what's left
+and why.
 
 ## How to test
 

@@ -28,4 +28,10 @@ class RoutePaths {
   static String projectDetail(String id) => '/projects/$id';
   static String funnelEditor(String id) => '/funnels/$id/edit';
   static String funnelPreview(String id) => '/funnels/$id/preview';
+
+  /// The public, unauthenticated funnel view - see app_router.dart's
+  /// `redirect` for the auth-bypass exception this path needs, and
+  /// docs/PHASE_7_PUBLISHING.md "Public routing".
+  static const String publicFunnelPrefix = '/f';
+  static String publicFunnel(String slug) => '$publicFunnelPrefix/$slug';
 }
