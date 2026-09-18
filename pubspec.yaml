@@ -1,0 +1,64 @@
+name: createai_studio
+description: "CreateAI Studio - AI Creative Studio mobile application."
+publish_to: 'none'
+
+# App display name lives in core/constants/app_constants.dart and the Android
+# manifest (android/app/src/main/AndroidManifest.xml) - change both there to
+# rename the product without touching this package name.
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Backend / auth / storage
+  supabase_flutter: ^2.15.4
+  # Used directly in core/errors/error_handler.dart to type-check the
+  # storage exception Supabase throws - pinned to the version
+  # supabase_flutter 2.15.4 resolves.
+  storage_client: ^2.6.0
+
+  # State management & DI
+  flutter_riverpod: ^3.3.2
+
+  # Navigation
+  go_router: ^17.0.0
+
+  # Networking / connectivity
+  connectivity_plus: ^7.3.1
+
+  # Local persistence (theme/settings cache)
+  shared_preferences: ^2.5.3
+
+  # File upload picker (used by the reusable generation upload UI)
+  file_picker: ^11.0.3
+
+  # Remote image loading/caching (thumbnails, avatars, generation results)
+  cached_network_image: ^3.4.1
+
+  # Date/number formatting
+  intl: ^0.20.2
+
+  # Value equality for models
+  equatable: ^3.0.0
+  image_picker: ^1.2.1
+  share_plus: ^12.0.2
+  gal: ^2.3.3
+  http: ^1.6.0
+  just_audio: ^0.10.6
+  video_player: ^2.10.1
+  chewie: ^1.12.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  mocktail: ^1.0.5
+
+flutter:
+  uses-material-design: true

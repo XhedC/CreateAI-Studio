@@ -1,0 +1,74 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Android local machine config (SDK/Flutter paths - machine-specific, not a
+# secret, but must never be committed since it breaks other machines' builds)
+/android/local.properties
+
+# Android signing (release keystore + credentials) - never commit these.
+# There is no keystore in this repo yet (release currently signs with the
+# debug keystore - see the TODO in android/app/build.gradle.kts); these
+# patterns are here so a real one added later is never accidentally staged.
+/android/key.properties
+*.jks
+*.keystore
+*.p12
+*.pem
+
+# Local environment configuration (Supabase URL/anon key). Never commit real
+# values - only env/*.json.example is tracked. See README.md.
+/env/*.json
+!/env/*.json.example
+
+# Generic .env files, in case one is ever added alongside env/*.json.
+.env
+.env.*
+!.env.example
+
+# Secret/credential dumps that sometimes get created ad hoc.
+*.secret
+secrets.json
+service-account*.json
