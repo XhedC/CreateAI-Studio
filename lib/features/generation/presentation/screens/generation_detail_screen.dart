@@ -2,7 +2,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gal/gal.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
@@ -10,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../../core/constants/creation_type.dart';
 import '../../../../core/constants/generation_status.dart';
 import '../../../../core/router/route_paths.dart';
+import '../../../../core/services/media_save_service.dart';
 import '../../../../core/utils/date_formatter.dart';
 import '../../../../core/widgets/app_error_widget.dart';
 import '../../../../core/widgets/audio_player_widget.dart';
@@ -102,7 +102,14 @@ class _GenerationDetailScreenState extends ConsumerState<GenerationDetailScreen>
           return; // user cancelled the save dialog
         }
       } else {
-        await Gal.putImageBytes(response.bodyBytes, album: 'CreateAI Studio');
+        final saved = await const MediaSaveService().saveImageBytes(
+          response.bodyBytes,
+          album: 'CreateAI Studio',
+        );
+        if (!saved) {
+          if (mounted) setState(() => _isDownloading = false);
+          return; // user cancelled the desktop save dialog
+        }
       }
       if (!mounted) return;
       final label = isVideo ? 'Video' : (isMusic ? 'Music' : 'Image');

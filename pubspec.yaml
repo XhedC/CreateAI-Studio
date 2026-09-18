@@ -54,6 +54,18 @@ dependencies:
   video_player: ^2.10.1
   chewie: ^1.12.1
 
+  # Desktop media backends - just_audio and video_player have no official
+  # Windows/Linux implementation (see docs/CROSS_PLATFORM_ARCHITECTURE.md
+  # "Media playback"). Both register themselves as the platform
+  # implementation for just_audio/video_player only on platforms that lack
+  # one, so AudioPlayerController/VideoPlayerWidget need zero changes and
+  # Android/iOS/macOS/Web keep using the official plugins unchanged.
+  just_audio_media_kit: ^2.1.0
+  media_kit: ^1.2.0
+  media_kit_libs_windows_audio: ^1.0.9
+  media_kit_libs_linux: ^1.2.1
+  fvp: ^0.38.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
