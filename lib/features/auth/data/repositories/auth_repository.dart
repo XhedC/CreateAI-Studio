@@ -42,9 +42,20 @@ class SupabaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Stream<AppUser?> get authStateChanges => _client.auth.onAuthStateChange.map(
-        (data) => _toAppUser(data.session?.user),
-      );
+  Stream<AppUser?> get authStateChanges async* {
+    // `_client.auth.currentUser` is already populated synchronously by the
+    // time `Supabase.initialize()` returns (it's set during session
+    // recovery, before `main()` ever calls `runApp()`) - yielding it first
+    // means the router's redirect logic never has to wait on
+    // `onAuthStateChange`'s first event to know the answer it already has.
+    // `onAuthStateChange` itself is a replay-to-late-subscribers stream, so
+    // this does not skip or duplicate any real sign-in/sign-out event; it
+    // only removes an unnecessary "loading" window on cold start.
+    yield currentUser;
+    yield* _client.auth.onAuthStateChange.map(
+      (data) => _toAppUser(data.session?.user),
+    );
+  }
 
   @override
   AppUser? get currentUser => _toAppUser(_client.auth.currentUser);

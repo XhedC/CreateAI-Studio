@@ -25,15 +25,22 @@ import '../../features/projects/presentation/screens/projects_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../widgets/app_shell.dart';
-import 'go_router_refresh_stream.dart';
+import 'go_router_refresh_notifier.dart';
 import 'route_paths.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authStateStream = ref.watch(authRepositoryProvider).authStateChanges;
+  // Drives GoRouter's redirect re-checks from the exact same
+  // `authStateProvider` instance that `redirect` itself reads below -
+  // see go_router_refresh_notifier.dart for why a second, independently
+  // subscribed stream previously caused a startup race that left the app
+  // stuck on the splash screen.
+  final refreshNotifier = GoRouterRefreshNotifier();
+  ref.listen(authStateProvider, (_, __) => refreshNotifier.notify());
+  ref.onDispose(refreshNotifier.dispose);
 
   return GoRouter(
     initialLocation: RoutePaths.splash,
-    refreshListenable: GoRouterRefreshStream(authStateStream),
+    refreshListenable: refreshNotifier,
     redirect: (context, state) {
       final authState = ref.read(authStateProvider);
       final isLoading = authState.isLoading && !authState.hasValue;
