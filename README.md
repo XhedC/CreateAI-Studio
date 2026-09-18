@@ -281,3 +281,5 @@ natural follow-on once payments exist to gate it.
 - [docs/video-generation.md](docs/video-generation.md) - the Phase 4 Edge Functions, the genuinely-async job/poll architecture, provider job security, cancellation, and how to switch providers.
 - [docs/funnel-generation.md](docs/funnel-generation.md) - the Phase 5 funnel schema, JSON validation/safe-correction, the Edge Function, the structured renderer, the editor/preview, leads, and future publishing architecture.
 - [docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md](docs/PHASE_6_CREDITS_SUBSCRIPTIONS.md) - the Phase 6 credit/subscription schema, atomic race-safe charging, idempotency, Edge Function billing integration, and the future payment-provider architecture.
+#   C r e a t e A I - S t u d i o  
+ 
