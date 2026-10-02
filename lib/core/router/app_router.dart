@@ -19,6 +19,9 @@ import '../../features/funnel_generation/presentation/screens/funnel_generator_s
 import '../../features/funnel_generation/presentation/screens/funnel_editor_screen.dart';
 import '../../features/funnel_generation/presentation/screens/funnel_preview_screen.dart';
 import '../../features/funnel_generation/presentation/screens/public_funnel_view_screen.dart';
+import '../../features/video_maker/presentation/screens/video_maker_screen.dart';
+import '../../features/video_maker/presentation/screens/video_story_editor_screen.dart';
+import '../../features/video_maker/presentation/screens/video_stories_screen.dart';
 import '../../features/notifications/presentation/screens/notifications_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/projects/presentation/screens/project_detail_screen.dart';
@@ -51,22 +54,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isAuthRoute = location == RoutePaths.login ||
           location == RoutePaths.register ||
           location == RoutePaths.forgotPassword;
-      // The ONLY route a signed-out (or fully anonymous) visitor may reach -
-      // a published funnel's public page. Everything else in this app
-      // still requires a session; this is a narrow, single-prefix carve-out,
-      // not a change to how auth/splash resolves for every other route -
-      // see docs/PHASE_7_PUBLISHING.md "Public routing".
-      final isPublicFunnelRoute = location.startsWith('${RoutePaths.publicFunnelPrefix}/');
 
-      if (isPublicFunnelRoute) {
-        return null;
-      }
+      final isPublicFunnelRoute =
+          location.startsWith('${RoutePaths.publicFunnelPrefix}/');
+      if (isPublicFunnelRoute) return null;
+
       if (isLoading) {
         return location == RoutePaths.splash ? null : RoutePaths.splash;
       }
-      if (!isAuthenticated) {
-        return isAuthRoute ? null : RoutePaths.login;
-      }
+      if (!isAuthenticated) return isAuthRoute ? null : RoutePaths.login;
       if (isAuthenticated && (isAuthRoute || location == RoutePaths.splash)) {
         return RoutePaths.home;
       }
@@ -190,6 +186,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.creditHistory,
         builder: (context, state) => const CreditHistoryScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.videoMaker,
+        builder: (context, state) => const VideoMakerScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.videoStories,
+        builder: (context, state) => const VideoStoriesScreen(),
+      ),
+      GoRoute(
+        path: '/video-stories/:id/edit',
+        builder: (context, state) => VideoStoryEditorScreen(
+          storyId: state.pathParameters['id']!,
+        ),
       ),
     ],
   );

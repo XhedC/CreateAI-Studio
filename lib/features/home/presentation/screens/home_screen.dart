@@ -66,6 +66,11 @@ class HomeScreen extends ConsumerWidget {
                   ?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 10),
+            // Video Maker hero card
+            _VideoMakerHeroCard(
+              onTap: () => context.push(RoutePaths.videoMaker),
+            ),
+            const SizedBox(height: 12),
             QuickCreateRow(
               onSelected: (type) {
                 if (type == CreationType.image) {
@@ -160,6 +165,75 @@ class HomeScreen extends ConsumerWidget {
               error: (_, __) => const AppErrorWidget(),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VideoMakerHeroCard extends StatelessWidget {
+  const _VideoMakerHeroCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                colors.primaryContainer,
+                colors.tertiaryContainer,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.movie_creation_rounded,
+                  color: colors.primary,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'AI Video Maker',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Text, Photo, or Voice to Video  |  Up to 60s',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_rounded, color: colors.primary),
+            ],
+          ),
         ),
       ),
     );

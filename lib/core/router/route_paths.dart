@@ -14,6 +14,9 @@ class RoutePaths {
   static const String createMusic = '/create/music';
   static const String createVideo = '/create/video';
   static const String createFunnel = '/create/funnel';
+  static const String videoMaker = '/video-maker';
+  static const String videoStories = '/video-stories';
+  static String videoStoryEditor(String id) => '/video-stories/$id/edit';
   static const String history = '/history';
   static const String projects = '/projects';
   static const String profile = '/profile';
